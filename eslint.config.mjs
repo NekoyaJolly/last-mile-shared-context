@@ -19,6 +19,11 @@ export default tseslint.config(
       '**/*.config.ts',
       '**/*.config.mjs',
       '**/*.config.js',
+      // examples/ は独自の Next.js / TypeScript 設定を持ち、root の tsconfig.json
+      // (project: ['./tsconfig.json']) に含まれていない。root ESLint で型情報あり
+      // lint をかけるとプロジェクト不在エラーになるため、examples 内の lint は
+      // 各 example 自身が責務を持つ (`pnpm --filter <example> typecheck` 等)。
+      'examples/**',
     ],
   },
   js.configs.recommended,
