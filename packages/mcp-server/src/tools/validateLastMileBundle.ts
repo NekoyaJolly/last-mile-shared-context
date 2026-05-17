@@ -76,7 +76,9 @@ export function execute(input: Input): ToolResult {
       });
     }
   } else {
-    // refine で防いでいる想定だが、type narrowing のために fallback。
+    // `inputSchema` 自体は `bundle` / `bundleJson` 両方を optional にしているため
+    // (`registerTool` の input schema は ZodObject の `.shape` を要求し、`.refine` を
+    // 噛ませると schema 形式が崩れる)、両方が無い場合の必須チェックは execute 内で行う。
     throw new McpToolError('`bundle` または `bundleJson` のどちらかを指定してください。');
   }
 

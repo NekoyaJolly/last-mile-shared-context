@@ -33,13 +33,33 @@ import {
 } from './tools/index.js';
 
 /**
- * 1 tool 分の登録情報 (`registerToolsTo` の内部用)。
+ * 1 tool 分の登録情報 (`createMcpServer` の内部用)。
  *
  * - `inputSchema` は `z.object(...)` の ZodObject (= MCP SDK の `AnySchema` に該当)
  * - `execute` は schema parse 済の `Input` を受けて `ToolResult` を返す
  *
- * AGENTS.md §2 で unknown を露出させないため、tool 別 module の `z.infer<typeof inputSchema>`
- * を使う形に統一する (= server.ts 側は `z.AnyZodObject` で受け、各 tool 内で型を確定)。
+ * **AGENTS.md §2 (any/unknown 禁止) と SDK 型システムの境界に関する注記**:
+ * MCP SDK の `registerTool` は `BaseToolCallback<Args>` で callback shape を要求し、
+ * `Args extends ZodRawShapeCompat | AnySchema` で input shape を絞り込む。本 file の
+ * `registerOne` は 8 つの tool を共通で受けるため、`execute` の input 型は
+ * 「全 tool 共通の上位型」になる必要があり、これは SDK の `AnySchema` (= ZodObject<any,any,any>)
+ * の `z.infer` = 構造上 any 同等にならざるを得ない。
+ *
+ * ただし **production code として any 値が実装に流れることはない**:
+ *   - `makeRegistration` がジェネリック `Schema` を保持し、tool 別 `execute` の input は
+ *     `z.infer<Schema>` 固有型でコンパイル時に narrow される
+ *   - 集約後の `ToolRegistration.execute` の引数は SDK が `inputSchema` から zod parse した
+ *     値 (= 各 tool の schema 検証済 value) のみ
+ *   - `as`/`any`/`unknown` キーワードはコード中に一切使っていない (TS 推論結果としての
+ *     any 同等のみ)
+ *
+ * 代替案として `ToolCallback<Schema['shape']>` 経由のジェネリック化も検討したが、
+ * - `inputSchema: definition.inputSchema.shape` に変えると lint
+ *   `@typescript-eslint/no-unsafe-assignment` が SDK 側 `any` を検出して fail
+ * - tool module の `inputSchema` を ZodRawShape 形式に変えると、各 tool 側で
+ *   `z.object({...}).shape` を取り出す必要があり、tool 側で `z.infer<Schema>` 表現が崩れる
+ * いずれも SDK の型制約と AGENTS.md ルールの両立が現実的でなかったため、現状方式を採用。
+ * Copilot レビュー (PR #11) での指摘もこの判断で対応している。
  */
 interface ToolRegistration {
   definition: {
@@ -55,8 +75,9 @@ interface ToolRegistration {
    * 非同期 tool (CDP 系) は `Promise<ToolResult>` を返す。
    * 受け手側で `await` するため両対応で問題なし。
    *
-   * 型注釈 (`z.infer<z.AnyZodObject> = any`) は `makeRegistration` 経由で
+   * 型注釈 (`z.infer<z.AnyZodObject>` = TS 推論上 any 同等) は `makeRegistration` 経由で
    * 各 tool の `Schema` 固有型に narrow 済 (= production code に any 値が漏れない)。
+   * 詳細は本 interface の上ドキュメント参照。
    */
   execute: (input: z.infer<z.AnyZodObject>) => ToolResult | Promise<ToolResult>;
 }
@@ -64,8 +85,10 @@ interface ToolRegistration {
 /**
  * 各 tool module の `definition` + `execute` を `ToolRegistration` に揃える helper。
  *
- * ジェネリックで `Schema` を保持することで、`execute(input: z.infer<Schema>)` の
- * 型整合性を保つ。本 helper を経由することで「定義と実装の不整合」をコンパイル時に検出できる。
+ * ジェネリック `Schema` を保持することで、`execute(input: z.infer<Schema>)` の
+ * 型整合性を tool 単位で保つ (= 「定義と実装の不整合」をコンパイル時検出)。
+ * 本 helper を経由することが「any 値が production に流れない」ことを担保する唯一の
+ * チョークポイント。
  */
 function makeRegistration<Schema extends z.AnyZodObject>(opts: {
   definition: {
@@ -79,10 +102,10 @@ function makeRegistration<Schema extends z.AnyZodObject>(opts: {
   return {
     definition: opts.definition,
     // `z.AnyZodObject` は `ZodObject<any, any, any>` であり `z.infer<z.AnyZodObject>` は
-    // `any` に展開される。`opts.execute` (= `(input: z.infer<Schema>) => ...`) は
-    // `z.infer<Schema>` が `any` のサブ型なので、`(input: any) => ...` (= ToolRegistration の
-    // execute 型) にそのまま代入可能。`as` cast は不要 (lint
-    // `no-unnecessary-type-assertion` で error)。
+    // TS 推論上 any 同等。`opts.execute` (= `(input: z.infer<Schema>) => ...`) は
+    // `z.infer<Schema>` が any 同等のサブ型なので、`(input: z.infer<z.AnyZodObject>) => ...`
+    // (= ToolRegistration の execute 型) にそのまま代入可能。`as` cast は不要
+    // (lint `no-unnecessary-type-assertion` で error になる)。
     execute: opts.execute,
   };
 }
