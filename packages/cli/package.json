@@ -6,6 +6,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "lastmile": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -20,8 +23,13 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@last-mile-context/cdp-collector": "workspace:*",
     "@last-mile-context/core": "workspace:*",
-    "@last-mile-context/schema": "workspace:*"
+    "@last-mile-context/schema": "workspace:*",
+    "@types/chrome-remote-interface": "^0.34.0",
+    "chrome-remote-interface": "^0.34.0",
+    "commander": "^12.1.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "rimraf": "^6.0.1",

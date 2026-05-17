@@ -40,7 +40,9 @@
       "@last-mile-context/schema": ["packages/schema/src/index.ts"],
       "@last-mile-context/schema/*": ["packages/schema/src/*"],
       "@last-mile-context/core": ["packages/core/src/index.ts"],
-      "@last-mile-context/core/*": ["packages/core/src/*"]
+      "@last-mile-context/core/*": ["packages/core/src/*"],
+      "@last-mile-context/cdp-collector": ["packages/cdp-collector/src/index.ts"],
+      "@last-mile-context/cdp-collector/*": ["packages/cdp-collector/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "coverage", ".vitest"]
