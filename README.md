@@ -99,10 +99,7 @@ pnpm dlx @last-mile-context/cli collect \
 ## 4. 利用例 (TypeScript)
 
 ```ts
-import {
-  zLastMileBundle,
-  type LastMileBundle,
-} from '@last-mile-context/schema';
+import { type LastMileBundle } from '@last-mile-context/schema';
 import {
   normalizeBundle,
   redactBundle,
@@ -178,7 +175,7 @@ Human Developer (修正レビュー / マージ / 公開判断)
 | [`docs/AI_DEBUG_CONTEXT.md`](./docs/AI_DEBUG_CONTEXT.md) | アプリ側 `window.__AI_DEBUG_CONTEXT__` 仕様 |
 | [`docs/CLI_USAGE.md`](./docs/CLI_USAGE.md) | `lastmile` CLI コマンド (collect / init / validate / mask / doctor) |
 | [`docs/MCP_USAGE.md`](./docs/MCP_USAGE.md) | MCP server 設定方法と 8 tool 仕様 |
-| [`docs/SECURITY.md`](./docs/SECURITY.md) | Redaction / 機密情報マスク (Phase 8 正式版で更新予定) |
+| `docs/SECURITY.md` (Phase 8 PR #7 マージ後に追加) | Redaction / 機密情報マスク (Phase 8 正式版で更新予定) |
 | [`docs/PROJECT_INTEGRATION_GUIDE.md`](./docs/PROJECT_INTEGRATION_GUIDE.md) | 既存プロジェクトへの導入手順 (Phase 11 前提資料) |
 | [`docs/architecture/LAST_MILE_SHARED_CONTEXT_WBS.md`](./docs/architecture/LAST_MILE_SHARED_CONTEXT_WBS.md) | 実装 WBS (Phase 1〜12 全体計画) |
 | [`templates/AGENTS.last-mile.md`](./templates/AGENTS.last-mile.md) | 各プロジェクト AGENTS.md へ貼る Last-Mile Rule |

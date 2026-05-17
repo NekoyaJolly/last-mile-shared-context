@@ -68,7 +68,7 @@ Bundle を AI へ渡す前に **必ず機密情報をマスクする**。
   - **strict (opt-in)**: マスク対象を 1 つでも検出したら `RedactionStrictError` で停止 (CI / 自動公開パイプライン向け)
 - 必ず Bundle に `redactionReport.maskedFields` が同梱される (= 何をマスクしたかが監査できる)
 
-詳細: [`./SECURITY.md`](./SECURITY.md) (Phase 8 で整備、現状は `@last-mile-context/core/src/redaction.ts` の docstring が一次情報)
+詳細: `./SECURITY.md` (Phase 8 PR #7 マージ後に追加) (Phase 8 で整備、現状は `@last-mile-context/core/src/redaction.ts` の docstring が一次情報)
 
 ---
 
@@ -152,7 +152,7 @@ LastMileBundle
 | [`./AI_DEBUG_CONTEXT.md`](./AI_DEBUG_CONTEXT.md) | アプリ側が公開する `window.__AI_DEBUG_CONTEXT__` の仕様 |
 | [`./CLI_USAGE.md`](./CLI_USAGE.md) | `lastmile` CLI コマンド |
 | [`./MCP_USAGE.md`](./MCP_USAGE.md) | MCP server 設定 / tool 仕様 |
-| [`./SECURITY.md`](./SECURITY.md) | Redaction / 機密情報マスク (Phase 8) |
+| `./SECURITY.md` (Phase 8 PR #7 マージ後に追加) | Redaction / 機密情報マスク (Phase 8) |
 | [`./PROJECT_INTEGRATION_GUIDE.md`](./PROJECT_INTEGRATION_GUIDE.md) | 既存プロジェクトへの導入手順 |
 | [`./architecture/LAST_MILE_SHARED_CONTEXT_WBS.md`](./architecture/LAST_MILE_SHARED_CONTEXT_WBS.md) | 実装 WBS (Phase 1〜12 の全体計画) |
 

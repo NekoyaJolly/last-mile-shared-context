@@ -201,7 +201,7 @@ lastmile doctor
 
 ```bash
 lastmile doctor
-# ✓ Config: .lastmile.config.json (valid)
+# ✓ Config: lastmile.config.json (valid)
 # ✓ Output dir: .last-mile/latest (writable)
 # ✗ Chrome CDP: failed to reach http://localhost:9222
 #   ヒント: 別ターミナルで以下を実行してください

@@ -349,7 +349,7 @@ AI: (mask_sensitive_bundle を呼ぶ)
 - `evaluate_script` 系の任意コード実行 tool は **初期実装に含めない** (将来許可リスト式に限定して追加検討)
 - `lastmile.config.json` をリポジトリにコミットする場合、redaction rule のみ含め、Authorization header の値や API key を含めない
 
-詳細: [`./SECURITY.md`](./SECURITY.md) (Phase 8 で整備)
+詳細: `./SECURITY.md` (Phase 8 PR #7 マージ後に追加) (Phase 8 で整備)
 
 ---
 
