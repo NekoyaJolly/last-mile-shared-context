@@ -13,3 +13,16 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Node / TypeScript
+node_modules/
+dist/
+coverage/
+.vitest/
+*.tsbuildinfo
+
+# pnpm
+.pnpm-store/
+
+# Last-Mile Bundle 出力 (実プロジェクト導入後の生成物)
+.last-mile/
