@@ -1,0 +1,219 @@
+{
+  "protocolVersion": "0.1.0",
+  "collectedAt": "2026-05-17T14:32:18.000+09:00",
+  "source": {
+    "collector": "cdp",
+    "packageVersion": "0.1.0"
+  },
+  "app": {
+    "name": "trader-note-build-ai",
+    "environment": "development",
+    "branch": "feature/last-mile-debug-example",
+    "commit": "abc1234"
+  },
+  "page": {
+    "url": "http://localhost:3000/side-b/hypotheses/hyp_example_001",
+    "title": "Hypothesis Detail — Trader Note",
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 2
+    },
+    "screenshot": {
+      "path": ".last-mile/latest/screenshot.png",
+      "mimeType": "image/png"
+    }
+  },
+  "userObservation": {
+    "lastAction": "Run Validation ボタン押下",
+    "expected": "AgentRun が作成され、Validation 結果カードが画面上部に表示される",
+    "actual": "ボタン押下後に画面変化がなく、Network タブで /api/v1/agent-runs が 500 を返している",
+    "notes": "再現性 100% / dev_user_01 でログイン済 / 直前に hypothesis を candidate→validated に変更した"
+  },
+  "debugContext": {
+    "screen": {
+      "name": "HypothesisDetail",
+      "route": "/side-b/hypotheses/[id]",
+      "mode": "development"
+    },
+    "target": {
+      "type": "hypothesis",
+      "id": "hyp_example_001",
+      "relatedIds": {
+        "agentRunId": "run_example_pending",
+        "validationId": ""
+      }
+    },
+    "action": {
+      "name": "Run Validation",
+      "status": "failed",
+      "expected": "AgentRun が作成され Validation 結果が画面へ反映される",
+      "actual": "ボタン押下後に画面変化がなく Network で 500"
+    },
+    "domain": {
+      "hypothesisStatus": "candidate",
+      "latestValidationStatus": "failed",
+      "latestAgentRunStatus": "error",
+      "validationAttemptCount": 3
+    },
+    "runtime": {
+      "latestApi": [
+        {
+          "method": "POST",
+          "url": "/api/v1/agent-runs",
+          "status": 500,
+          "durationMs": 312
+        },
+        {
+          "method": "GET",
+          "url": "/api/v1/hypotheses/hyp_example_001",
+          "status": 200,
+          "durationMs": 87
+        }
+      ],
+      "latestError": {
+        "message": "AgentRunCreateError: validation_payload missing required field 'evidence'",
+        "stack": "AgentRunCreateError: validation_payload missing required field 'evidence'\n    at createAgentRun (apps/api/src/handlers/agent-runs.ts:142:11)\n    at POST /api/v1/agent-runs:33:7",
+        "timestamp": "2026-05-17T05:32:17.842Z"
+      },
+      "warnings": [
+        "validation_payload schema は v2 が期待されているが v1 で送信されている可能性"
+      ]
+    }
+  },
+  "console": {
+    "errors": [
+      {
+        "level": "error",
+        "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error) (URL: http://localhost:3000/api/v1/agent-runs)",
+        "timestamp": "2026-05-17T05:32:17.901Z",
+        "source": "network"
+      },
+      {
+        "level": "error",
+        "text": "Uncaught (in promise) Error: AgentRunCreateError",
+        "timestamp": "2026-05-17T05:32:17.912Z",
+        "source": "apps/web/src/features/validation/RunValidationButton.tsx:48"
+      }
+    ],
+    "warnings": [
+      {
+        "level": "warning",
+        "text": "React Hook useEffect has a missing dependency: 'hypothesisId'. Either include it or remove the dependency array.",
+        "timestamp": "2026-05-17T05:32:10.001Z",
+        "source": "apps/web/src/features/validation/RunValidationButton.tsx:30"
+      }
+    ]
+  },
+  "network": {
+    "failedRequests": [
+      {
+        "method": "POST",
+        "url": "http://localhost:3000/api/v1/agent-runs",
+        "status": 500,
+        "statusText": "Internal Server Error",
+        "requestHeaders": {
+          "content-type": "application/json",
+          "authorization": "[REDACTED]",
+          "cookie": "[REDACTED]"
+        },
+        "responseHeaders": {
+          "content-type": "application/json",
+          "x-request-id": "req_01HZX12345"
+        },
+        "requestBodySummary": "{\"hypothesisId\":\"hyp_example_001\",\"validationPayload\":{\"version\":\"v1\"}}",
+        "responseBodySummary": "{\"error\":\"AgentRunCreateError\",\"message\":\"validation_payload missing required field 'evidence'\",\"requestId\":\"req_01HZX12345\"}",
+        "errorText": "",
+        "startedAt": "2026-05-17T05:32:17.530Z",
+        "endedAt": "2026-05-17T05:32:17.842Z"
+      }
+    ],
+    "recentRequests": [
+      {
+        "method": "GET",
+        "url": "http://localhost:3000/api/v1/hypotheses/hyp_example_001",
+        "status": 200,
+        "statusText": "OK",
+        "requestHeaders": {
+          "authorization": "[REDACTED]",
+          "cookie": "[REDACTED]"
+        },
+        "responseHeaders": {
+          "content-type": "application/json"
+        },
+        "requestBodySummary": "",
+        "responseBodySummary": "{\"id\":\"hyp_example_001\",\"status\":\"candidate\",\"title\":\"<truncated>\"}",
+        "startedAt": "2026-05-17T05:32:10.110Z",
+        "endedAt": "2026-05-17T05:32:10.197Z"
+      },
+      {
+        "method": "POST",
+        "url": "http://localhost:3000/api/v1/agent-runs",
+        "status": 500,
+        "statusText": "Internal Server Error",
+        "requestHeaders": {
+          "authorization": "[REDACTED]",
+          "cookie": "[REDACTED]"
+        },
+        "responseHeaders": {
+          "content-type": "application/json"
+        },
+        "requestBodySummary": "{\"hypothesisId\":\"hyp_example_001\",\"validationPayload\":{\"version\":\"v1\"}}",
+        "responseBodySummary": "{\"error\":\"AgentRunCreateError\"}",
+        "startedAt": "2026-05-17T05:32:17.530Z",
+        "endedAt": "2026-05-17T05:32:17.842Z"
+      }
+    ]
+  },
+  "server": {
+    "errors": [
+      {
+        "level": "error",
+        "message": "AgentRunCreateError: validation_payload missing required field 'evidence' (hypothesisId=hyp_example_001, requestId=req_01HZX12345)",
+        "timestamp": "2026-05-17T05:32:17.835Z",
+        "source": "apps/api/src/handlers/agent-runs.ts"
+      }
+    ],
+    "hints": [
+      "validation_payload schema v2 を期待しているが client が v1 で送っている可能性",
+      "RunValidationButton.tsx の buildPayload() が v2 へ移行できているか確認"
+    ]
+  },
+  "domain": {
+    "hypothesisStatus": "candidate",
+    "latestValidationStatus": "failed",
+    "latestAgentRunStatus": "error",
+    "validationAttemptCount": 3
+  },
+  "redactionReport": {
+    "maskedFields": [
+      {
+        "path": "network.failedRequests[0].requestHeaders.authorization",
+        "reason": "sensitive-header:authorization"
+      },
+      {
+        "path": "network.failedRequests[0].requestHeaders.cookie",
+        "reason": "sensitive-header:cookie"
+      },
+      {
+        "path": "network.recentRequests[0].requestHeaders.authorization",
+        "reason": "sensitive-header:authorization"
+      },
+      {
+        "path": "network.recentRequests[0].requestHeaders.cookie",
+        "reason": "sensitive-header:cookie"
+      },
+      {
+        "path": "network.recentRequests[1].requestHeaders.authorization",
+        "reason": "sensitive-header:authorization"
+      },
+      {
+        "path": "network.recentRequests[1].requestHeaders.cookie",
+        "reason": "sensitive-header:cookie"
+      }
+    ],
+    "warnings": [
+      "[redaction] masked 6 field(s) in default (continue) mode"
+    ]
+  }
+}
