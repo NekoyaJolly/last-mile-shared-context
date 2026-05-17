@@ -2,8 +2,9 @@
  * ページ情報 (URL / title / viewport) 取得 (P4-03)。
  *
  * 取得経路:
- * - URL / title: `Target.getTargetInfo` (= 現 client がアタッチしている target の情報) を主、
- *   fallback で `Runtime.evaluate('location.href')` / `document.title`
+ * - URL: `Runtime.evaluate('location.href')` (page target が browser endpoint では
+ *   `Target.getTargetInfo` を直接呼べないため Runtime 経由に統一、Copilot review #3 対応)
+ * - title: `Runtime.evaluate('document.title')`
  * - viewport: `Page.getLayoutMetrics().cssVisualViewport`
  *
  * 設計方針 (Phase 4 仕様):

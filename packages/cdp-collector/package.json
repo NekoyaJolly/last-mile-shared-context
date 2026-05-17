@@ -25,11 +25,11 @@
   "dependencies": {
     "@last-mile-context/core": "workspace:*",
     "@last-mile-context/schema": "workspace:*",
-    "chrome-remote-interface": "^0.34.0"
+    "@types/chrome-remote-interface": "^0.34.0",
+    "chrome-remote-interface": "^0.34.0",
+    "devtools-protocol": "^0.0.1173815"
   },
   "devDependencies": {
-    "@types/chrome-remote-interface": "^0.34.0",
-    "devtools-protocol": "^0.0.1173815",
     "rimraf": "^6.0.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"

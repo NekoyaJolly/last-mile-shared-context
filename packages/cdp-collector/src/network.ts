@@ -143,8 +143,11 @@ export async function subscribeNetwork(
           (r) => r.errorText !== undefined || (r.status !== undefined && r.status >= 400),
         )
         .map(toBundleRequest);
-      // recentRequests は startedAt が新しい順に最大 recentLimit 件
+      // recentRequests は collect 時点で完了 (finished) しているリクエストに限定 (Copilot
+      // review #4 対応)。in-flight (responseReceived 前のもの) は endedAt / status が
+      // 欠けたエントリとなり下流の見通しを悪くするため除外する。
       const recent = all
+        .filter((r) => r.finished)
         .slice()
         .sort((a, b) => compareIsoDesc(a.startedAt, b.startedAt))
         .slice(0, recentLimit)

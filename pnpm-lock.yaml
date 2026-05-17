@@ -69,16 +69,16 @@ importers:
       '@last-mile-context/schema':
         specifier: workspace:*
         version: link:../schema
-      chrome-remote-interface:
+      '@types/chrome-remote-interface':
         specifier: ^0.34.0
         version: 0.34.0
-    devDependencies:
-      '@types/chrome-remote-interface':
+      chrome-remote-interface:
         specifier: ^0.34.0
         version: 0.34.0
       devtools-protocol:
         specifier: ^0.0.1173815
         version: 0.0.1173815
+    devDependencies:
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3

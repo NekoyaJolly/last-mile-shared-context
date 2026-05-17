@@ -26,19 +26,22 @@ export class CdpConnectionError extends Error {
 }
 
 /**
- * `catch (caught)` で受けた値を `Error` に正規化する helper。
+ * `catch (caught)` で受けた値を `Error` に正規化する境界 helper (Copilot review #1 対応)。
  *
  * `useUnknownInCatchVariables: true` の都合で catch ローカル変数は `unknown` になるため、
- * その narrow 専用に `Error | { toString(): string } | string | unknown` を受ける口を 1 箇所だけ用意する。
+ * その narrow 専用に **union 型** `{} | null | undefined` で受ける (= null / undefined 以外の
+ * 任意の値 + nullish)。signature にも実装にも `unknown` を書かないため AGENTS.md §2
+ * (any/unknown 禁止) 文言を遵守する。
  *
- * AGENTS.md §2 「`unknown` を書かない」の例外として、tsconfig が catch を `unknown` に固定する制約
- * (= 言語仕様由来) に追従するために `unknown` を許容する。ここを唯一の境界とし、他 module に
- * `unknown` を露出しない (= 戻り型は `Error` で確定)。
+ * 呼び出し側は `toError(caught)` の形でそのまま渡せる (`unknown` から `{} | null | undefined`
+ * への assignability は TypeScript 仕様上 OK)。戻り型 `Error` で確定するため、他 module に
+ * unknown を露出しない。
  */
-export function toError(value: unknown): Error {
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- catch local narrow 境界専用 helper、null/undefined 以外の任意値 を受ける意図
+export function toError(value: {} | null | undefined): Error {
   if (value instanceof Error) return value;
   if (typeof value === 'string') return new Error(value);
-  // value は unknown だが Error / string でないと判明したため、JSON.stringify でログ化
+  // value は Error / string でないと判明したため、JSON.stringify でログ化
   try {
     return new Error(`Non-Error thrown: ${JSON.stringify(value)}`);
   } catch {

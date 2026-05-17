@@ -68,7 +68,11 @@ export interface CollectOptions {
 
 const DEFAULT_SCREENSHOT_PATH = '.last-mile/latest/screenshot.png';
 const DEFAULT_COLLECTOR = 'cdp';
-const PACKAGE_VERSION = '0.1.0';
+// PACKAGE_VERSION は本 package の package.json から読み取り、ハードコードのずれを防ぐ
+// (Copilot review #5 対応)。tsup の bundle 時に JSON が inline 化される (resolveJsonModule + tsup defaults)。
+// runtime に package.json 解決の I/O は発生しない。
+import packageJson from '../package.json' with { type: 'json' };
+const PACKAGE_VERSION: string = packageJson.version;
 
 /**
  * 1 回の呼び出しで Last-Mile Bundle を生成する。

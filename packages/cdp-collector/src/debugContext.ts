@@ -85,7 +85,10 @@ function toJsonObject(value: JsonValue, windowKey: string, warnings: WarningSink
     return {};
   }
   if (typeof value !== 'object' || Array.isArray(value)) {
-    warnings.add(`AI Debug Context: window.${windowKey} is not an object (got ${typeof value})`);
+    // Array は typeof で 'object' 判定されてしまうため、実際の種別を分離して warning に出す
+    // (Copilot review #2 対応: 「got object」では原因が分かりづらい)
+    const actualKind = Array.isArray(value) ? 'array' : typeof value;
+    warnings.add(`AI Debug Context: window.${windowKey} is not an object (got ${actualKind})`);
     return {};
   }
   return value;
