@@ -10,6 +10,7 @@
  * - zero-deps に近く、TypeScript 型定義あり、よく使われる
  * - oclif は重く、Phase 5 範囲では不要
  */
+import { pathToFileURL } from 'node:url';
 import { Command } from 'commander';
 
 import { CliError, toError } from './errors.js';
@@ -254,12 +255,15 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 // bin として実行された時のみ main() を起動する。
 // import.meta.url との比較で、test や programatic use から require された時は起動しない。
 // (Node 22+ は import.meta.url が file:// URL を返す)
+//
+// Copilot review #4 対応: Windows のドライブ文字 / スペース / 日本語等の特殊文字を含む
+// パスでも安全に file URL 化するため、`pathToFileURL` を使用 (Node 標準、OS 差を吸収)。
 const isMainModule = (() => {
   try {
     const entry = process.argv[1];
     if (entry === undefined) return false;
-    const entryUrl = new URL(`file://${entry.replace(/\\/g, '/')}`).href;
-    return import.meta.url === entryUrl || import.meta.url.endsWith(entry.replace(/\\/g, '/'));
+    const entryUrl = pathToFileURL(entry).href;
+    return import.meta.url === entryUrl;
   } catch {
     return false;
   }

@@ -34,6 +34,17 @@ import {
 /** Bundle 取得用の collector を抽象化 (test で `vi.mock` 不要にする dependency injection point)。 */
 export type CollectorFn = (opts: CdpCollectOptions) => Promise<LastMileBundle>;
 
+/**
+ * maskHeaders placeholder warning の重複出力防止フラグ (Copilot review #3 対応)。
+ * test では `__resetMaskHeadersWarnFlagForTest` で reset 可能。
+ */
+let hasWarnedMaskHeadersPlaceholder = false;
+
+/** test 用: maskHeaders warning flag を reset する (本番コードでは使わない)。 */
+export function __resetMaskHeadersWarnFlagForTest(): void {
+  hasWarnedMaskHeadersPlaceholder = false;
+}
+
 /** `runCollect` の入力。 */
 export interface RunCollectOptions {
   /** 解決済設定 (config file + env + CLI 引数の merge 結果) */
@@ -113,6 +124,19 @@ export async function runCollect(options: RunCollectOptions): Promise<RunCollect
   if (shouldRedact) {
     const { bundle: redacted } = redactBundle(bundle, { strict: options.config.redaction.strict });
     bundle = redacted;
+  }
+
+  // Copilot review #3 対応: `config.redaction.maskHeaders` は init テンプレで出力されるが、
+  // 現状 `redactBundle` 側で追加ヘッダ指定をサポートしていない (Phase 8 で実装予定の
+  // placeholder)。設定が non-empty な場合に警告を 1 度だけ出して誤認を防ぐ。
+  const maskHeaders = options.config.redaction.maskHeaders;
+  if (shouldRedact && maskHeaders.length > 0 && !hasWarnedMaskHeadersPlaceholder) {
+    hasWarnedMaskHeadersPlaceholder = true;
+    process.stderr.write(
+      `[lastmile collect] warning: redaction.maskHeaders (${String(maskHeaders.length)} entries) is currently a Phase 8 placeholder and NOT applied. `
+        + `Default redaction rules (Authorization / Cookie / API keys / etc.) are applied regardless. `
+        + `See WBS §13 for Phase 8 plan.\n`,
+    );
   }
 
   // 観測対象 URL を notes に追記して、後から何を見ていたかを残す

@@ -5,9 +5,10 @@
  *   CLI 引数 > 環境変数 > lastmile.config.json > default config
  *
  * 役割:
- * - 設定ファイル探索: cwd → 上位ディレクトリ (任意の `--config` 指定があればそちらを優先)
- * - JSON parse + Zod 検証
- * - default 値の埋め込み (`zResolvedConfig` で完全な値型を保証)
+ * - 設定ファイル読み込み: `--config` 指定があればそちらを優先、なければ `cwd/lastmile.config.json`
+ *   (上位ディレクトリ探索は行わない、Copilot review #1 対応で doc と実装を一致)
+ * - JSON parse + Zod 検証 (`zLastMileConfigFile`)
+ * - default 値の埋め込み (`buildDefaultConfig` + `resolveConfig` で完全値型を保証)
  * - CLI 引数 / 環境変数とのマージは `resolveConfig` で一括処理
  *
  * AGENTS.md §2 遵守: 外部入力 (JSON) は zod で narrow、`any`/`unknown` 露出なし。
@@ -224,11 +225,21 @@ async function readFileOrThrow(absPath: string): Promise<string> {
   }
 }
 
+/**
+ * 存在しないファイルは `undefined` を返し、存在するが読めない (EACCES 等) は CliError を throw
+ * (Copilot review #2 対応、ENOENT 以外を「不在」と誤判定しない)。
+ */
 async function readFileIfExists(absPath: string): Promise<string | undefined> {
   try {
     return await readFile(absPath, 'utf8');
-  } catch {
-    return undefined;
+  } catch (caught) {
+    const code = (caught as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return undefined;
+    const cause = toError(caught);
+    throw new CliError(`Failed to read config file: ${absPath}: ${cause.message}`, {
+      cause,
+      hint: 'ファイルの読み取り権限を確認してください (chmod / ACL)。',
+    });
   }
 }
 

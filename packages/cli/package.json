@@ -26,12 +26,12 @@
     "@last-mile-context/cdp-collector": "workspace:*",
     "@last-mile-context/core": "workspace:*",
     "@last-mile-context/schema": "workspace:*",
-    "@types/chrome-remote-interface": "^0.34.0",
     "chrome-remote-interface": "^0.34.0",
     "commander": "^12.1.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/chrome-remote-interface": "^0.34.0",
     "rimraf": "^6.0.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"
