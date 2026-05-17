@@ -1,0 +1,85 @@
+{
+  "protocolVersion": "0.1.0",
+  "collectedAt": "2026-05-17T13:40:34.594Z",
+  "source": {
+    "collector": "cdp",
+    "packageVersion": "0.1.0"
+  },
+  "app": {
+    "name": "",
+    "environment": "development",
+    "branch": "",
+    "commit": ""
+  },
+  "page": {
+    "url": "http://localhost:3000/",
+    "title": "Last-Mile Shared Context — Next.js example",
+    "viewport": {
+      "width": 929,
+      "height": 917,
+      "deviceScaleFactor": 1
+    },
+    "screenshot": {
+      "path": "C:\\Users\\Nekoya2\\appprojects\\last-mile-shared-context\\examples\\nextjs-app-router\\.last-mile\\latest\\screenshot.png",
+      "mimeType": "image/png"
+    }
+  },
+  "userObservation": {
+    "lastAction": "Trigger demo failure ボタン押下",
+    "expected": "200 OK with payload",
+    "actual": "HTTP 500 returned (Demo API returned a non-success status)",
+    "notes": "意図的失敗の再現サンプル。debugContext.action.status が 'failed'、network.failedRequests に /api/demo-failure 500 が記録されている期待"
+  },
+  "debugContext": {
+    "screen": {
+      "name": "Demo",
+      "route": "/",
+      "mode": "development"
+    },
+    "target": {
+      "type": "demo",
+      "id": "demo_001",
+      "relatedIds": {}
+    },
+    "action": {
+      "name": "demo-failure",
+      "status": "failed",
+      "expected": "200 OK with payload",
+      "actual": "HTTP 500 returned"
+    },
+    "domain": {
+      "exampleAppId": "last-mile-shared-context-example"
+    },
+    "runtime": {
+      "latestApi": [
+        {
+          "method": "GET",
+          "url": "/api/demo-failure",
+          "status": 500
+        }
+      ],
+      "latestError": {
+        "message": "Demo API returned a non-success status",
+        "timestamp": "2026-05-17T13:40:13.351Z"
+      },
+      "warnings": []
+    }
+  },
+  "console": {
+    "errors": [],
+    "warnings": []
+  },
+  "network": {
+    "failedRequests": [],
+    "recentRequests": []
+  },
+  "server": {
+    "errors": [],
+    "hints": []
+  },
+  "domain": {},
+  "redactionReport": {
+    "maskedFields": [],
+    "warnings": []
+  }
+}
