@@ -28,6 +28,10 @@ export default defineConfig({
     alias: {
       '@last-mile-context/schema': resolve(__dirname, 'packages/schema/src/index.ts'),
       '@last-mile-context/core': resolve(__dirname, 'packages/core/src/index.ts'),
+      '@last-mile-context/cdp-collector': resolve(
+        __dirname,
+        'packages/cdp-collector/src/index.ts',
+      ),
       '@last-mile-context/app-bridge': resolve(__dirname, 'packages/app-bridge/src/index.ts'),
       '@last-mile-context/react-bridge': resolve(__dirname, 'packages/react-bridge/src/index.ts'),
     },

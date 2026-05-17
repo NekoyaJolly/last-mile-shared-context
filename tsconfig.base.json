@@ -41,6 +41,8 @@
       "@last-mile-context/schema/*": ["packages/schema/src/*"],
       "@last-mile-context/core": ["packages/core/src/index.ts"],
       "@last-mile-context/core/*": ["packages/core/src/*"],
+      "@last-mile-context/cdp-collector": ["packages/cdp-collector/src/index.ts"],
+      "@last-mile-context/cdp-collector/*": ["packages/cdp-collector/src/*"],
       "@last-mile-context/app-bridge": ["packages/app-bridge/src/index.ts"],
       "@last-mile-context/app-bridge/*": ["packages/app-bridge/src/*"],
       "@last-mile-context/react-bridge": ["packages/react-bridge/src/index.ts"],
