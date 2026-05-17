@@ -23,6 +23,7 @@ export {
 
 export {
   copyAiDebugContext,
+  __resetCopyAiDebugContextWarnFlagForTest,
   type CopyAiDebugContextOptions,
   type CopyAiDebugContextResult,
 } from './copy.js';

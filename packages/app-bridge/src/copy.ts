@@ -15,18 +15,31 @@ import { getAiDebugContext } from './store.js';
 
 /** copy 結果メタ情報 (clipboard write 成否を呼び出し側で判別できるよう返す) */
 export interface CopyAiDebugContextResult {
-  /** クリップボードへの書き込み試行結果 */
-  clipboard: 'written' | 'unsupported' | 'failed';
+  /**
+   * クリップボードへの書き込み試行結果。
+   *
+   * - `'written'`: 書き込み成功
+   * - `'empty'`: そもそも context が登録されていないため書き込みを試行しなかった (Fix #9 で追加)
+   * - `'unsupported'`: 環境にクリップボード API がない (Node / SSR / 古いブラウザ等)
+   * - `'failed'`: クリップボード API は呼べたが writeText が reject した (permission 等)
+   */
+  clipboard: 'written' | 'empty' | 'unsupported' | 'failed';
   /** 実際に生成された JSON 文字列 (clipboard 不可時のフォールバック表示用) */
   json: string;
 }
 
 export interface CopyAiDebugContextOptions {
   /**
-   * 軽量 redact モード。
+   * 軽量 redact モード (**Phase 8 までの暫定 placeholder**)。
    *
-   * true の場合、`domain` と `runtime.latestApi` / `runtime.latestError` を空化した
-   * 安全表現に差し替える。Phase 8 で本格 redaction に差し替え予定。
+   * true の場合、`domain` と `runtime.latestApi` / `runtime.latestError` のみを空化する
+   * 「最低限の」表現に差し替える。**完全な機密情報除去は保証していない**:
+   *  - `screen` / `target` / `action` / `runtime.warnings` は素通り
+   *  - Phase 8 完了後に `@last-mile-context/core` の本格 redaction utility 呼び出しへ
+   *    内部実装を差し替える予定 (API シグネチャはそのまま)
+   *
+   * Fix #5: 真の redaction を保証しているかの誤解を避けるため、true 指定時に
+   * 1 度だけ `console.warn` で placeholder 性質を明示する。
    *
    * @default false
    */
@@ -39,7 +52,32 @@ export interface CopyAiDebugContextOptions {
 }
 
 /**
+ * `redact: true` 利用時の「Phase 8 placeholder」warn を 1 度だけ出す。
+ *
+ * Fix #5: 呼び出し側に「これは本物の redaction ではなく後で差し替わる」ことを
+ * 明示する。毎 click で warn が出るのを避けるため process 単位で 1 度だけ。
+ */
+let hasWarnedRedactPlaceholder = false;
+function warnRedactPlaceholderOnce(): void {
+  if (hasWarnedRedactPlaceholder) return;
+  if (typeof console === 'undefined' || typeof console.warn !== 'function') {
+    return;
+  }
+  hasWarnedRedactPlaceholder = true;
+  console.warn(
+    '[app-bridge] copyAiDebugContext({ redact: true }) is a Phase 8 ' +
+      'placeholder. It only clears `domain` / `runtime.latestApi` / ' +
+      '`runtime.latestError` and does NOT guarantee full redaction. ' +
+      'It will be replaced by @last-mile-context/core redaction in Phase 8. ' +
+      '(This warning is shown once per process.)',
+  );
+}
+
+/**
  * 軽量 redact 処理。Phase 8 までの暫定実装。
+ *
+ * Fix #5: `runtime.warnings` / `screen` / `target` / `action` は素通りすることを
+ * docstring で明示。本格 redaction で全フィールド対応するのは Phase 8 の責務。
  */
 function lightRedact(context: AiDebugContext): AiDebugContext {
   return {
@@ -54,20 +92,37 @@ function lightRedact(context: AiDebugContext): AiDebugContext {
 }
 
 /**
+ * テスト専用: redact placeholder warn の「once」フラグをリセットする。
+ *
+ * 本番コードからは呼ばないこと。
+ */
+export function __resetCopyAiDebugContextWarnFlagForTest(): void {
+  hasWarnedRedactPlaceholder = false;
+}
+
+/**
  * 現在の AI Debug Context をクリップボードへコピーする。
  *
- * - context が未登録の場合: `clipboard: 'unsupported'`, `json: '{}'` を返す
- * - clipboard API 非対応環境: `clipboard: 'unsupported'`, `json: <integrity>` を返す
- * - 書き込み中に例外: `clipboard: 'failed'`, `json: <integrity>` を返す
+ * Fix #8 / #9: 戻り値の clipboard 状態と json 内容を実際の挙動に合わせて整理:
+ *  - context が未登録の場合: `clipboard: 'empty'`, `json: '{}'`
+ *    (Fix #9: 「context なし」と「clipboard API なし」を区別するため新値 `'empty'`)
+ *  - clipboard API 非対応環境: `clipboard: 'unsupported'`, `json: <整形済み context JSON>`
+ *  - clipboard.writeText が reject: `clipboard: 'failed'`, `json: <整形済み context JSON>`
+ *  - 正常: `clipboard: 'written'`, `json: <整形済み context JSON>`
  *
  * @returns 書き込み結果と生成 JSON 文字列を含む Promise
  */
 export async function copyAiDebugContext(
   options: CopyAiDebugContextOptions = {},
 ): Promise<CopyAiDebugContextResult> {
+  // redact: true は Phase 8 placeholder のため、誤解防止に 1 度だけ warn を出す
+  if (options.redact === true) {
+    warnRedactPlaceholderOnce();
+  }
   const ctx = options.context ?? getAiDebugContext();
   if (ctx === undefined) {
-    return { clipboard: 'unsupported', json: '{}' };
+    // Fix #9: 「context が未登録」は API 不対応とは独立した状態なので明示的に区別する
+    return { clipboard: 'empty', json: '{}' };
   }
   const payload = options.redact === true ? lightRedact(ctx) : ctx;
   const json = JSON.stringify(payload, null, 2);

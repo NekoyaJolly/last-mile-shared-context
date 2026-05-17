@@ -23,7 +23,9 @@ export const AI_DEBUG_CONTEXT_WINDOW_KEY = '__AI_DEBUG_CONTEXT__' as const;
 /**
  * window publish の現在モード。
  *
- * - `auto`: development 環境のみ window へ書き出す (デフォルト)
+ * - `auto`: **`NODE_ENV` が明示的に `'development'` または `'test'` のときだけ**
+ *   window へ書き出す (デフォルト)。`NODE_ENV` が `undefined` (serverless / 素の node 実行 等)
+ *   や `'production'` などの場合は in-memory のみで window へは公開しない (安全側)。
  * - `force`: 環境問わず window へ書き出す (本番でも opt-in した場合のみ)
  * - `disabled`: window へは書き出さず in-memory のみ
  */
@@ -34,6 +36,23 @@ interface InternalState {
   current: AiDebugContext | undefined;
   /** window publish モード */
   publishMode: PublishMode;
+  /**
+   * 直近の `syncToWindow` 呼び出し時点での publish 許可状態。
+   *
+   * Fix #12: 「publish 不許可状態への遷移」を検知して 1 回だけ window から削除する
+   * ため、前回状態を保持する。これにより `disabled` モードでの毎 write 削除を避け、
+   * 他者が意図的に置いた window 値を破壊しない。
+   *
+   * 初期値 `undefined` は「まだ一度も publish 判定していない」状態を意味する。
+   */
+  prevPublishAllowed: boolean | undefined;
+  /**
+   * `mergeAiDebugContext` で base 未登録時の warn を 1 回だけ出すためのフラグ。
+   *
+   * Fix #6: silent no-op を development では console.warn で通知するが、
+   * 毎 render の merge 呼び出しでログ爆発を起こさないように 1 度だけにする。
+   */
+  hasWarnedMergeWithoutBase: boolean;
 }
 
 /**
@@ -43,6 +62,8 @@ interface InternalState {
 const state: InternalState = {
   current: undefined,
   publishMode: 'auto',
+  prevPublishAllowed: undefined,
+  hasWarnedMergeWithoutBase: false,
 };
 
 /**
@@ -66,6 +87,13 @@ function safeGetWindow(): (Window & typeof globalThis) | undefined {
  *
  * 判定は最も汎用的な NODE_ENV 経由のみ。bundler 固有変数
  * (Next.js `process.env.NEXT_PUBLIC_*` 等) には依存しない。
+ *
+ * Fix #1: `NODE_ENV === undefined` (serverless / 素の node 実行 / minimum runtime 等)
+ * は development 扱いにしない。明示的に `'development'` / `'test'` の時のみ true を返し、
+ * 「未設定」は本番相当として in-memory only にフォールバックさせる (安全側に倒す)。
+ *
+ * このため `publishMode: 'auto'` のデフォルト挙動は
+ * 「`NODE_ENV` が明示的に `development` または `test` の時だけ window へ公開する」となる。
  */
 function isDevelopmentEnvironment(): boolean {
   try {
@@ -73,7 +101,7 @@ function isDevelopmentEnvironment(): boolean {
     // 取れなかった場合は安全側に倒して「development ではない」とみなす。
     if (typeof process === 'undefined') return false;
     const nodeEnv = process.env.NODE_ENV;
-    return nodeEnv === undefined || nodeEnv === 'development' || nodeEnv === 'test';
+    return nodeEnv === 'development' || nodeEnv === 'test';
   } catch {
     return false;
   }
@@ -94,26 +122,43 @@ function shouldPublishToWindow(): boolean {
 }
 
 /**
- * window への反映を行う。`shouldPublishToWindow()` が false の場合は in-memory のみ。
+ * window への反映を行う。
+ *
+ * Fix #12: 「publish 許可状態 → 不許可状態への遷移」を検知して 1 度だけ window から削除し、
+ * それ以降は不許可状態の間は window を触らない。これにより:
+ *  - `auto`/`disabled` モードかつ production の状態で merge/set が連発しても、
+ *    他者が意図的に置いた `window.__AI_DEBUG_CONTEXT__` を毎回破壊しない
+ *  - 公開 → 非公開の切り替え時には確実に痕跡を消す
+ *
+ * 許可状態のときは従来通り value を書き出す (undefined なら削除)。
  */
 function syncToWindow(value: AiDebugContext | undefined): void {
   const win = safeGetWindow();
   if (!win) return;
-  if (!shouldPublishToWindow()) {
-    // window はあるが publish を許可されていない場合、過去に書き込まれた値が残らないよう削除する。
-    try {
-      // 既存値が undefined なら無視する (削除コストを払う必要なし)
-      const existing = Reflect.get(win, AI_DEBUG_CONTEXT_WINDOW_KEY) as
-        | AiDebugContext
-        | undefined;
-      if (existing !== undefined) {
-        Reflect.deleteProperty(win, AI_DEBUG_CONTEXT_WINDOW_KEY);
+
+  const currentlyAllowed = shouldPublishToWindow();
+  const prevAllowed = state.prevPublishAllowed;
+
+  if (!currentlyAllowed) {
+    // 「初回 publish 判定」または「許可 → 不許可への遷移」のときだけ 1 度削除する。
+    // それ以降の不許可状態では window を一切触らない (他者の意図的な書き込みを保護する)。
+    const isTransitionToDisallowed = prevAllowed !== false;
+    if (isTransitionToDisallowed) {
+      try {
+        const existing = Reflect.get(win, AI_DEBUG_CONTEXT_WINDOW_KEY) as
+          | AiDebugContext
+          | undefined;
+        if (existing !== undefined) {
+          Reflect.deleteProperty(win, AI_DEBUG_CONTEXT_WINDOW_KEY);
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
+    state.prevPublishAllowed = false;
     return;
   }
+
   try {
     if (value === undefined) {
       Reflect.deleteProperty(win, AI_DEBUG_CONTEXT_WINDOW_KEY);
@@ -123,6 +168,7 @@ function syncToWindow(value: AiDebugContext | undefined): void {
   } catch {
     /* ignore: window 書き込み不可な環境ではフォールバックの in-memory のみ使用 */
   }
+  state.prevPublishAllowed = true;
 }
 
 /**
@@ -173,13 +219,21 @@ export function setAiDebugContext(context: AiDebugContext): void {
  *
  * 取得元の優先順位:
  *  1. in-memory state (set / merge を経た最新値)
- *  2. (in-memory が空の場合のみ) window 上の値を Zod で validate して採用
+ *  2. (in-memory が空 **かつ** 現在の publish モードで window 公開が許可されている場合のみ)
+ *     window 上の値を Zod で validate して採用
+ *
+ * Fix #2: write path (`syncToWindow`) と read path を一致させるため、
+ * `shouldPublishToWindow()` が false (= `disabled` や production-`auto`) のときは
+ * window を一切参照しない。これにより `disabled` モードで stale な window 値を拾わない。
  *
  * window 上の値を信頼するのは、SSR ハイドレーション直後など bridge を経由せず
  * 直接 window に書かれていたケースを許容するため。validate に失敗すれば undefined を返す。
  */
 export function getAiDebugContext(): AiDebugContext | undefined {
   if (state.current !== undefined) return state.current;
+
+  // publish が許可されていない状態では window を read path にも使わない
+  if (!shouldPublishToWindow()) return undefined;
 
   const win = safeGetWindow();
   if (!win) return undefined;
@@ -201,9 +255,13 @@ export function getAiDebugContext(): AiDebugContext | undefined {
  *
  * `AiDebugContext` のサブツリー (`screen` / `target` / `action` / `domain` / `runtime`) を
  * 個別に部分更新できる。`domain` だけは JsonObject の自由形のため `Partial<JsonObject>` 相当。
+ *
+ * Fix #7: 配列は `deepMerge` で「置換」扱いになるため、型側でも要素を再帰 partial 化せず
+ * `U[]` (= 完全な要素型) を要求する。これにより型と runtime の不整合 (要素の半端な
+ * partial が型上は許されるのに runtime では存在しない値で置換される) を防ぐ。
  */
 export type DeepPartial<T> = T extends (infer U)[]
-  ? DeepPartial<U>[]
+  ? U[]
   : T extends object
     ? { [K in keyof T]?: DeepPartial<T[K]> }
     : T;
@@ -253,12 +311,30 @@ function deepMerge<T extends Record<string, unknown>>(
  * - 現在 context が未設定の場合は何もしない (merge は「既存 context の更新」用 API)。
  *   初期登録は `setAiDebugContext()` を使うこと。
  * - マージ後の値も Zod で validate し、不正なら例外を投げて in-memory を更新しない。
+ *
+ * Fix #6: base 未登録時の silent no-op は開発者にフィードバックがないため、
+ * development 環境では console.warn を 1 度だけ出して使い方ミスを気付かせる
+ * (production / NODE_ENV 未明示では出さない、log spam を避ける)。
  */
 export function mergeAiDebugContext(
   partial: DeepPartial<AiDebugContext>,
 ): void {
   if (state.current === undefined) {
     // 既存 context 無しでの merge は no-op。意図せぬ partial-only 状態を作らない。
+    if (
+      isDevelopmentEnvironment() &&
+      !state.hasWarnedMergeWithoutBase &&
+      typeof console !== 'undefined' &&
+      typeof console.warn === 'function'
+    ) {
+      state.hasWarnedMergeWithoutBase = true;
+      console.warn(
+        '[app-bridge] mergeAiDebugContext called before setAiDebugContext. ' +
+          'The call is ignored. Call setAiDebugContext() first to register an ' +
+          'initial context, then use merge for partial updates. ' +
+          '(This warning is shown once per process.)',
+      );
+    }
     return;
   }
   const merged = deepMerge(
@@ -292,6 +368,8 @@ export function clearAiDebugContext(): void {
 export function __resetAiDebugContextStoreForTest(): void {
   state.current = undefined;
   state.publishMode = 'auto';
+  state.prevPublishAllowed = undefined;
+  state.hasWarnedMergeWithoutBase = false;
   const win = safeGetWindow();
   if (win) {
     try {
