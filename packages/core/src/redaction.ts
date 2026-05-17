@@ -102,7 +102,7 @@ export function detectSensitive(value: string, context: MaskContext = {}): MaskD
 
     // PII 検出は opt-out 可能 (default on)
     if (enablePii) {
-      if (isEmailAddress(value)) return { shouldMask: true, reason: 'email' };
+      if (containsEmailAddress(value)) return { shouldMask: true, reason: 'email' };
       if (isCreditCardLike(value)) return { shouldMask: true, reason: 'credit-card' };
       // phone は 12+ 桁連続数字より先に評価 (誤検知抑制のため + / ハイフン必須)
       if (isPhoneNumber(value)) return { shouldMask: true, reason: 'phone' };
@@ -136,9 +136,10 @@ export function detectSensitive(value: string, context: MaskContext = {}): MaskD
  *          `long-digit-sequence` / `phone-international`)、なければ `null`。
  */
 function detectEmbeddedSensitive(value: string, enablePii: boolean): string | null {
-  // 1) JWT: base64url 3 セグメント・各 10+ chars
-  // 例: "auth failed: eyJ...XYZ.abc.def" を拾う
-  if (/[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/.test(value)) {
+  // 1) JWT: base64url 3 セグメント・各 20+ chars + word boundary
+  //    (Copilot review #4 対応: 旧 `{10,}` ではファイル名/version 文字列を誤検知。
+  //     セグメント長を 20 以上に上げ、`\b` 境界で前後の文字混入を防ぐ)
+  if (/\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/.test(value)) {
     return 'jwt';
   }
   // 2) API key prefix
@@ -146,8 +147,14 @@ function detectEmbeddedSensitive(value: string, enablePii: boolean): string | nu
   if (/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}/.test(value)) return 'api-key';
   if (/\bAKIA[0-9A-Z]{12,}/.test(value)) return 'api-key';
   // 3) 40+ chars の連続 base64-like substring (低リスク誤検知のため閾値高め)
-  if (/[A-Za-z0-9+/_=-]{40,}/.test(value) && /[A-Za-z]/.test(value) && /\d/.test(value)) {
-    return 'long-base64';
+  //    Copilot review #2 対応: 旧実装は値全体に対して letter/digit 存在チェックを
+  //    行っていたため、別箇所に英数字があれば誤検知する。マッチ部分自体に英字+数字
+  //    が両方含まれることを capture group の中身で評価する。
+  {
+    const m = /[A-Za-z0-9+/_=-]{40,}/.exec(value);
+    if (m !== null && /[A-Za-z]/.test(m[0]) && /\d/.test(m[0])) {
+      return 'long-base64';
+    }
   }
 
   if (enablePii) {
@@ -168,12 +175,26 @@ function detectEmbeddedSensitive(value: string, enablePii: boolean): string | nu
  * 値中に 13〜19 桁の数字列 (区切り `-` / 空白許容) があり、Luhn check が通るかを判定する。
  *
  * 単純な substring 検索だと UUID 等の誤検知が増えるため、桁数 + Luhn の二重チェックで絞り込む。
+ *
+ * Copilot review #3 対応: 旧 greedy match では「短い数字列の後に実カード番号」のケースで
+ * 数字列を先頭から消費して 19 桁に達してしまい、合成スライドで Luhn が失敗 → 実カード番号
+ * 検出漏れになる。`\b` 境界で各数字列を独立に取り、digit-only 抽出後にスライディング
+ * ウィンドウで 13〜19 桁の全部分集合に対して Luhn を試す (= 検出漏れ大幅減少)。
  */
 function containsLuhnDigitsSubstring(value: string): boolean {
-  const re = /(?:\d[\s-]?){13,19}/g;
+  // 数字列 (区切り含む) を `\b` 境界で抽出
+  const re = /\b\d(?:[\s-]?\d){12,18}\b/g;
   for (const m of value.matchAll(re)) {
     const digits = m[0].replace(/[\s-]/g, '');
-    if (/^\d{13,19}$/.test(digits) && luhnCheck(digits)) return true;
+    if (digits.length < 13 || digits.length > 19) continue;
+    // 13〜19 桁の全スライディングウィンドウで Luhn 試行
+    for (let len = 13; len <= 19; len++) {
+      if (len > digits.length) break;
+      for (let start = 0; start + len <= digits.length; start++) {
+        const window = digits.slice(start, start + len);
+        if (luhnCheck(window)) return true;
+      }
+    }
   }
   return false;
 }
@@ -403,6 +424,9 @@ function normalizeExtraMaskKeys(
  * 利用側は `warnings.find(w => w.startsWith('[redaction:category]'))` で機械的に parse 可能。
  */
 function summarizeByCategory(entries: readonly RedactionEntry[]): string[] {
+  // Copilot review #6 対応: 空 entries では空配列を返して防御 (将来の流用時に
+  // 「空 entries で空サマリ文字列を返す」紛らわしさを排除)。
+  if (entries.length === 0) return [];
   const counts = new Map<string, number>();
   for (const e of entries) {
     // reason は "sensitive-header:authorization" や "jwt-like" の形で来る。
@@ -496,19 +520,24 @@ function isLongBase64Like(value: string): boolean {
  *
  * 完全な RFC 5322 を満たすのは現実的でないため、典型的な `local@domain.tld` 形を検出する。
  * 文字列の一部に含まれる場合 (例: `Hello user@example.com please reply`) も検出するため、
- * 完全一致ではなく部分一致で評価する。
+ * 完全一致ではなく部分一致で評価する (`containsEmailAddress` の alias、Copilot review #5
+ * 対応で命名を整理: 命名上は「whole value がメール」を想起させたため、partial match
+ * 含むことを明示する命名に揃え、`isEmailAddress` は後方互換 wrapper として残す)。
  */
-function isEmailAddress(value: string): boolean {
+function containsEmailAddress(value: string): boolean {
   return /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(value);
 }
+
 
 /**
  * 電話番号検出 (E.164 / 国内電話 0X-XXXX-XXXX 形)。
  *
  * 誤検知を抑えるため、以下のいずれかを満たすときだけ phone と判断する:
- * - 先頭が `+` で始まる (E.164、国際電話)
- * - ハイフン or 空白を含み、桁数 (区切り文字除く) が 10〜15
- * - `0` で始まる日本の国内電話形 (例: `090-1234-5678`, `03-1234-5678`)
+ * - 先頭が `+` で始まる (E.164、国際電話)、桁数 (区切り除く) 10〜15
+ * - `0` で始まる日本の国内電話形 (例: `090-1234-5678`, `03-1234-5678`)、9〜10 桁
+ *
+ * (Copilot review #1 対応: 旧 JSDoc には「ハイフン or 空白含み 10〜15 桁」も
+ *  列挙されていたが実装は E.164 と日本国内のみ。仕様と docs の不一致を解消)
  *
  * クレジットカードや単なる ID と区別するため、桁構成 (10〜15) に限定する。
  */
