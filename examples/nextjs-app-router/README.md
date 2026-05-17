@@ -135,12 +135,16 @@ Claude Desktop / Cursor 等の MCP クライアントから collect を呼べる
 {
   "mcpServers": {
     "last-mile-context": {
-      "command": "pnpm",
-      "args": ["lastmile", "mcp"]
+      "command": "npx",
+      "args": ["@last-mile-context/mcp-server"]
     }
   }
 }
 ```
+
+> Phase 6 (PR #6) で公開される `lastmile-mcp` bin (= `@last-mile-context/mcp-server`
+> パッケージ) を独立した MCP server として起動する。CLI 側に `mcp` subcommand は
+> ない (= Copilot review #2 対応で命名を修正)。
 
 MCP tool 経由で `collect` を呼ぶと、AI 自身が Bundle を取得して原因分類できる。**現時点では mcp-server package は scaffold のみで未実装。**
 
@@ -164,5 +168,5 @@ pnpm lastmile playwright run        # trace + bundle.json を保存
 
 - 本 example は `monorepo workspace 内 (examples/*)` にあるが、`packages/*` ではないため root の `pnpm lint` / `pnpm typecheck` / `pnpm test` / `pnpm build` の対象外。Next.js 固有の lint / typecheck はこの example 内で `pnpm --filter nextjs-app-router typecheck` を実行する。
 - `package.json` の `"private": true` により npm publish 対象外。
-- React は 19、Next.js は 15.1。`react-bridge` の peerDependency は `^18 || ^19` なので 19 を満たす。
+- React は 19、Next.js は 15.5.18。`react-bridge` の peerDependency は `^18 || ^19` なので 19 を満たす。
 - Phase 11 (= 実プロジェクト Trader-Note-Build-Ai 統合) は本 Phase の範囲外。
