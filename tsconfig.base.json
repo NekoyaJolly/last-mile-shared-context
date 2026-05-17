@@ -40,7 +40,11 @@
       "@last-mile-context/schema": ["packages/schema/src/index.ts"],
       "@last-mile-context/schema/*": ["packages/schema/src/*"],
       "@last-mile-context/core": ["packages/core/src/index.ts"],
-      "@last-mile-context/core/*": ["packages/core/src/*"]
+      "@last-mile-context/core/*": ["packages/core/src/*"],
+      "@last-mile-context/app-bridge": ["packages/app-bridge/src/index.ts"],
+      "@last-mile-context/app-bridge/*": ["packages/app-bridge/src/*"],
+      "@last-mile-context/react-bridge": ["packages/react-bridge/src/index.ts"],
+      "@last-mile-context/react-bridge/*": ["packages/react-bridge/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "coverage", ".vitest"]
