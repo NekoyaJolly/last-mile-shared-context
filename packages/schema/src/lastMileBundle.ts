@@ -151,7 +151,13 @@ export type BundleServer = z.infer<typeof zBundleServer>;
  * ただし AGENTS.md §2 で `unknown` 禁止のため、値型は明示的に `JSONValue` を再帰定義する。
  */
 const zJsonPrimitive = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];
 export const zJsonValue: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([zJsonPrimitive, z.array(zJsonValue), z.record(z.string(), zJsonValue)]),
 );
