@@ -1,7 +1,7 @@
 {
   "name": "@last-mile-context/app-bridge",
   "version": "0.1.0",
-  "description": "Framework-agnostic AI Debug Context bridge (Phase 3)",
+  "description": "Framework-agnostic bridge for window.__AI_DEBUG_CONTEXT__ and Copy AI Context",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
