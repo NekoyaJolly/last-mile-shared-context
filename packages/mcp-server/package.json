@@ -6,6 +6,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "lastmile-mcp": "./dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,15 +16,21 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@last-mile-context/cdp-collector": "workspace:*",
     "@last-mile-context/core": "workspace:*",
-    "@last-mile-context/schema": "workspace:*"
+    "@last-mile-context/schema": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "rimraf": "^6.0.1",
