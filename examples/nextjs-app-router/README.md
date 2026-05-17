@@ -37,7 +37,7 @@ examples/nextjs-app-router/
 | `@last-mile-context/react-bridge` | `CopyAiDebugContextButton` |
 
 > **本 example が直接 import している package は app-bridge / react-bridge / schema のみ**。
-> `@last-mile-context/cli` / `@last-mile-context/mcp-server` / `@last-mile-context/cdp-collector` / `@last-mile-context/playwright-adapter` は **完成済み** (Phase 4-7) で、example の dev server に対して外側 (CLI / MCP / Playwright プロセス) から接続して Bundle を取得する。下記「Phase 別 wire 手順」参照。
+> `@last-mile-context/cli` / `@last-mile-context/cdp-collector` / `@last-mile-context/playwright-adapter` は **完成済み** (Phase 4 / 5 / 7) で、example の dev server に対して外側 (CLI / Playwright プロセス) から接続して Bundle を取得する。`@last-mile-context/mcp-server` は **現状 scaffold のみ** (Phase 6 follow-up で 8 tools 本体を実装予定) 。下記「Phase 別 wire 手順」参照。
 
 ## 起動方法
 
@@ -124,7 +124,7 @@ window.__AI_DEBUG_CONTEXT__
 
 このサンプルは「Trigger demo failure ボタン押下後」の状態。`debugContext.action.status = "failed"` / `runtime.latestApi[0] = { method: 'GET', url: '/api/demo-failure', status: 500 }` / `runtime.latestError` が記録されている = AI に貼り付ければ「Demo 画面の demo-failure アクションが 500 を返した」事実が文字情報で伝わる。
 
-## Phase 別 wire 手順 (Phase 4-7 完成済み — 下記コマンドはすべて実走可能)
+## Phase 別 wire 手順 (Phase 4 / 5 / 7 は実走可能、Phase 6 は scaffold のみで follow-up 待ち)
 
 ### Phase 5 (CLI collect)
 
@@ -150,12 +150,12 @@ pnpm --filter nextjs-app-router exec node ../../packages/cli/dist/cli.js collect
 
 CLI 接続診断は `node packages/cli/dist/cli.js doctor` で行える。
 
-### Phase 6 (MCP)
+### Phase 6 (MCP) — scaffold のみ。follow-up PR で実装予定
 
-Claude Desktop / Cursor 等の MCP クライアントから collect を呼ぶ:
+`@last-mile-context/mcp-server` は現状 `__packageMeta` のみで、`bin` 定義 / `@modelcontextprotocol/sdk` 依存 / 実 tool は **未追加**。下記は follow-up PR 完成後の想定設定:
 
 ```jsonc
-// ~/.config/claude/claude_desktop_config.json (macOS / Linux) などに追加
+// (follow-up PR 完成後) ~/.config/claude/claude_desktop_config.json などに追加
 {
   "mcpServers": {
     "last-mile-context": {
@@ -166,30 +166,41 @@ Claude Desktop / Cursor 等の MCP クライアントから collect を呼ぶ:
 }
 ```
 
-`@last-mile-context/mcp-server` は MCP SDK 1.29 (`McpServer.registerTool`) で 8 tools (`collect_last_mile_bundle` / `get_current_page` / `take_screenshot` / `get_console_errors` / `get_network_failures` / `get_ai_debug_context` / `validate_last_mile_bundle` / `mask_sensitive_bundle`) を公開する。CLI 側に `mcp` subcommand は無い (独立した bin)。
+実装計画では 8 tools (`collect_last_mile_bundle` / `get_current_page` / `take_screenshot` / `get_console_errors` / `get_network_failures` / `get_ai_debug_context` / `validate_last_mile_bundle` / `mask_sensitive_bundle`) を公開し、CLI 側に `mcp` subcommand は持たず独立 bin として配布する。
 
 ### Phase 7 (Playwright trace)
 
 Playwright で trace を取りつつ Bundle を同梱する流れは `@last-mile-context/playwright-adapter` を test 内で使う形:
 
 ```ts
-import { collectBundleFromPage, attachTrace, generateSpec } from '@last-mile-context/playwright-adapter';
+import {
+  collectFromPlaywright,
+  attachTraceToBundle,
+  generatePlaywrightTestFromBundle,
+} from '@last-mile-context/playwright-adapter';
 
 test('demo failure', async ({ page, context }) => {
   await context.tracing.start({ screenshots: true, snapshots: true });
   await page.goto('/');
   await page.getByRole('button', { name: 'Trigger demo failure' }).click();
   await expect(page.locator('dd').first()).not.toHaveText(/まだ発火していません/);
-  const bundle = await collectBundleFromPage(page, {
-    lastAction: 'Trigger demo failure ボタン押下',
-    expected: '200 OK with payload',
-    actual: 'HTTP 500 returned',
+
+  const bundle = await collectFromPlaywright({
+    page,
+    userObservation: {
+      lastAction: 'Trigger demo failure ボタン押下',
+      expected: '200 OK with payload',
+      actual: 'HTTP 500 returned',
+    },
   });
-  await attachTrace(bundle, await context.tracing.stop({ path: '.last-mile/latest/trace.zip' }));
+
+  const tracePath = '.last-mile/latest/trace.zip';
+  await context.tracing.stop({ path: tracePath });
+  await attachTraceToBundle(bundle, tracePath);
 });
 ```
 
-`generateSpec(bundle)` で「次に同じ事象を再現する Playwright spec の雛形」も生成できる (E2E 化のための土台)。
+`generatePlaywrightTestFromBundle(bundle)` で「次に同じ事象を再現する Playwright spec の雛形」も生成できる (E2E 化のための土台)。
 
 ## 環境変数
 

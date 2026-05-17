@@ -33,7 +33,7 @@
 | **React Bridge** (`@last-mile-context/react-bridge`) | `useAiDebugContext` / `useMergeAiDebugContext` / `<CopyAiDebugContextButton />` | Phase 3 完了 |
 | **CDP Collector** (`@last-mile-context/cdp-collector`) | Chrome DevTools Protocol 経由で Bundle 生成 | Phase 4 完了 |
 | **CLI** (`@last-mile-context/cli`) | `lastmile collect / init / validate / mask / doctor` | Phase 5 完了 |
-| **MCP Server** (`@last-mile-context/mcp-server`) | AI client から呼べる 8 tools | Phase 6 完了 |
+| **MCP Server** (`@last-mile-context/mcp-server`) | AI client から呼べる 8 tools (`collect_last_mile_bundle` 等) | scaffold (Phase 6 PR #6 は package meta のみマージ、tool 本体は follow-up) |
 | **Playwright Adapter** (`@last-mile-context/playwright-adapter`) | Bundle + Trace + テスト雛形生成 | Phase 7 完了 |
 | **Security / Redaction** (`@last-mile-context/core`) | PII / Authorization / JWT / Luhn-credit-card 検出 + マスク | Phase 8 完了 |
 | **Docs / Templates** (`docs/`, `templates/`) | プロトコル仕様、CLI/MCP 利用ガイド、AGENTS.md 挿入テンプレ | Phase 9 完了 |
@@ -71,27 +71,30 @@ export function HypothesisDetailPage({ id }: { id: string }) {
 
 ### 3.2 CLI
 
-```bash
-# 初期化
-pnpm dlx @last-mile-context/cli init --app-name my-app
+現状は **npm 未公開** (Phase 12 で公開予定)。monorepo 内のローカル実行例:
 
-# 起動中アプリから Bundle 取得 (要 Chrome --remote-debugging-port=9222)
-pnpm dlx @last-mile-context/cli collect \
+```bash
+# monorepo ルートで build
+pnpm install && pnpm build
+
+# 初期化 / 接続診断 / Bundle 取得 / 検証 / マスク
+node packages/cli/dist/cli.js init --app-name my-app
+node packages/cli/dist/cli.js doctor
+node packages/cli/dist/cli.js collect \
   --url http://localhost:3000 \
   --last-action "Run Validation ボタン押下" \
   --expected "AgentRun 作成と画面反映" \
   --actual "画面変化なく Network で 500" \
   --out .last-mile/latest
-
-# Bundle 検証 / マスク / 環境診断
-pnpm dlx @last-mile-context/cli validate .last-mile/latest/last-mile-bundle.json
-pnpm dlx @last-mile-context/cli mask .last-mile/latest/last-mile-bundle.json --strict
-pnpm dlx @last-mile-context/cli doctor
+node packages/cli/dist/cli.js validate .last-mile/latest/last-mile-bundle.json
+node packages/cli/dist/cli.js mask .last-mile/latest/last-mile-bundle.json --strict
 ```
 
-詳細: [`docs/CLI_USAGE.md`](./docs/CLI_USAGE.md)
+npm 公開後 (Phase 12 完了後) は `pnpm dlx @last-mile-context/cli ...` で同等のコマンドが叩ける予定。詳細: [`docs/CLI_USAGE.md`](./docs/CLI_USAGE.md)
 
-### 3.3 MCP Server
+### 3.3 MCP Server (scaffold — Phase 6 follow-up で実装予定)
+
+`packages/mcp-server/` は現状 `__packageMeta` のみの scaffold。MCP SDK ベースで 8 tools (`collect_last_mile_bundle` / `get_current_page` / `take_screenshot` / `get_console_errors` / `get_network_failures` / `get_ai_debug_context` / `validate_last_mile_bundle` / `mask_sensitive_bundle`) を公開する計画。Phase 6 follow-up PR で `bin` / 実 tool / `@modelcontextprotocol/sdk` 依存を追加する。設定例 (実装完了後):
 
 ```json
 {
@@ -104,22 +107,37 @@ pnpm dlx @last-mile-context/cli doctor
 }
 ```
 
-8 tools (`collect_last_mile_bundle` / `get_current_page` / `take_screenshot` / `get_console_errors` / `get_network_failures` / `get_ai_debug_context` / `validate_last_mile_bundle` / `mask_sensitive_bundle`) を MCP SDK 1.29 (`McpServer.registerTool`) で公開。詳細: [`docs/MCP_USAGE.md`](./docs/MCP_USAGE.md)
+詳細仕様: [`docs/MCP_USAGE.md`](./docs/MCP_USAGE.md) (設計のみ完成)
 
 ### 3.4 Playwright Adapter
 
 ```ts
-import { collectBundleFromPage, attachTrace, generateSpec } from '@last-mile-context/playwright-adapter';
+import {
+  collectFromPlaywright,
+  attachTraceToBundle,
+  generatePlaywrightTestFromBundle,
+} from '@last-mile-context/playwright-adapter';
 
-test('hypothesis 詳細で Run Validation が 500', async ({ page }) => {
+test('hypothesis 詳細で Run Validation が 500', async ({ page, context }) => {
+  await context.tracing.start({ screenshots: true, snapshots: true });
   await page.goto('/side-b/hypotheses/H-1');
   await page.getByRole('button', { name: 'Run Validation' }).click();
-  const bundle = await collectBundleFromPage(page, {
-    lastAction: 'Run Validation ボタン押下',
-    expected: 'AgentRun 作成と画面反映',
-    actual: '画面変化なく Network で 500',
+
+  const bundle = await collectFromPlaywright({
+    page,
+    userObservation: {
+      lastAction: 'Run Validation ボタン押下',
+      expected: 'AgentRun 作成と画面反映',
+      actual: '画面変化なく Network で 500',
+    },
   });
-  await attachTrace(bundle, await page.context().tracing.stop());
+
+  const tracePath = '.last-mile/latest/trace.zip';
+  await context.tracing.stop({ path: tracePath });
+  await attachTraceToBundle(bundle, tracePath);
+
+  // 同じ事象を再現する .spec.ts 雛形を生成
+  const { content } = generatePlaywrightTestFromBundle(bundle);
 });
 ```
 
@@ -205,7 +223,7 @@ Human Developer (修正レビュー / マージ / 公開判断)
 | [`docs/LAST_MILE_PROTOCOL.md`](./docs/LAST_MILE_PROTOCOL.md) | **プロトコル全体規約** (Schema / Adapter / Redaction の設計原則) |
 | [`docs/AI_DEBUG_CONTEXT.md`](./docs/AI_DEBUG_CONTEXT.md) | アプリ側 `window.__AI_DEBUG_CONTEXT__` 仕様 |
 | [`docs/CLI_USAGE.md`](./docs/CLI_USAGE.md) | `lastmile` CLI コマンド (collect / init / validate / mask / doctor) |
-| [`docs/MCP_USAGE.md`](./docs/MCP_USAGE.md) | MCP server 設定方法と 8 tool 仕様 |
+| [`docs/MCP_USAGE.md`](./docs/MCP_USAGE.md) | MCP server 設定方法と 8 tool 仕様 (※ 現状は設計のみ、実装は Phase 6 follow-up) |
 | [`docs/SECURITY.md`](./docs/SECURITY.md) | Redaction / 機密情報マスク (PII / Authorization / Luhn-credit-card / JWT) |
 | [`docs/PROJECT_INTEGRATION_GUIDE.md`](./docs/PROJECT_INTEGRATION_GUIDE.md) | 既存プロジェクトへの導入手順 (Phase 11 で使用) |
 | [`docs/architecture/LAST_MILE_SHARED_CONTEXT_WBS.md`](./docs/architecture/LAST_MILE_SHARED_CONTEXT_WBS.md) | 実装 WBS (Phase 1〜12 全体計画) |
@@ -244,7 +262,7 @@ packages/
   react-bridge/       ✅ Phase 3: useAiDebugContext / useMergeAiDebugContext / CopyAiDebugContextButton
   cdp-collector/      ✅ Phase 4: CDP 経由 Bundle 生成 (page/console/network/screenshot/debugContext)
   cli/                ✅ Phase 5: lastmile collect / init / validate / mask / doctor
-  mcp-server/         ✅ Phase 6: 8 tools via stdio (MCP SDK 1.29 registerTool)
+  mcp-server/         ⏳ Phase 6: scaffold のみ (PR #6 では __packageMeta だけ commit、follow-up で 8 tools 本体を実装予定)
   playwright-adapter/ ✅ Phase 7: adapter / accessibility / trace / actions / testGenerator
 examples/
   nextjs-app-router/  ✅ Phase 10: Next.js 15 + React 19 最小実用例
@@ -267,7 +285,7 @@ templates/            ✅ Phase 9: AGENTS.last-mile.md / ui-issue-report-templat
 | 3 | App Bridge 実装 | ✅ |
 | 4 | CDP Collector 実装 | ✅ |
 | 5 | CLI 実装 | ✅ |
-| 6 | MCP Server 実装 | ✅ |
+| 6 | MCP Server 実装 | ⏳ (scaffold のみ、follow-up で 8 tools 本体を実装) |
 | 7 | Playwright Adapter 実装 | ✅ |
 | 8 | Security / Redaction 強化 | ✅ |
 | 9 | Documentation / Templates | ✅ |

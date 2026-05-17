@@ -20,7 +20,7 @@
       "deviceScaleFactor": 1
     },
     "screenshot": {
-      "path": "C:\\Users\\Nekoya2\\appprojects\\last-mile-shared-context\\examples\\nextjs-app-router\\.last-mile\\latest\\screenshot.png",
+      "path": "screenshot.png",
       "mimeType": "image/png"
     }
   },
@@ -28,7 +28,7 @@
     "lastAction": "Trigger demo failure ボタン押下",
     "expected": "200 OK with payload",
     "actual": "HTTP 500 returned (Demo API returned a non-success status)",
-    "notes": "意図的失敗の再現サンプル。debugContext.action.status が 'failed'、network.failedRequests に /api/demo-failure 500 が記録されている期待"
+    "notes": "意図的失敗の再現サンプル。debugContext.action.status='failed' と debugContext.runtime.latestApi[0]={method:'GET',url:'/api/demo-failure',status:500} に Bridge 側で記録した状態が確認できる。cdp-collector は attach 時点以降の console/network event しか拾わないため、本サンプルでは console.errors / network.failedRequests は空 (collector attach より前にボタン押下済み)。collector の history バッファ取り込みは Phase 6 follow-up / Phase 11 で検討。"
   },
   "debugContext": {
     "screen": {

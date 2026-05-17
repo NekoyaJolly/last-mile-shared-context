@@ -1,7 +1,7 @@
 {
   "name": "@last-mile-context/mcp-server",
   "version": "0.1.0",
-  "description": "MCP server exposing 8 Last-Mile Bundle tools via stdio (collect / page / screenshot / console / network / debug context / validate / mask)",
+  "description": "MCP server exposing Last-Mile Bundle tools (scaffold; full implementation tracked in Phase 6 follow-up)",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
