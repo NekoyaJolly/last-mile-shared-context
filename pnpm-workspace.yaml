@@ -1,2 +1,7 @@
 packages:
   - 'packages/*'
+  # examples は monorepo workspace の dependency 解決対象 (workspace:* で
+  # @last-mile-context/* を参照する) だが、root scripts の
+  # `pnpm -r --filter "./packages/*"` には含まれないため lint / typecheck /
+  # build パイプラインに混入しない。
+  - 'examples/*'
