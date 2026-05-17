@@ -3,14 +3,20 @@
  *
  * WBS §2.4 / §13 のセキュリティ原則を実装する。
  *
- * 設計方針:
- * - default モード: マスクして処理継続 + warning を redactionReport に積む (P8-06 改訂版)
+ * 設計方針 (Phase 8 強化版):
+ * - default モード: マスクして処理継続 + warning を redactionReport に積む (P8-06)
  * - strict モード: マスク対象を 1 つでも検出したら例外で停止 (opt-in)
  * - マスク対象は §13.2 列挙: Authorization / Cookie / Set-Cookie / API key / access token /
- *   refresh token / Supabase key / email / phone / JWT 風 / 長大 base64 / session id
+ *   refresh token / Supabase key / email / phone / JWT 風 / 長大 base64 / session id /
+ *   クレジットカード風 / 12 桁以上の連続数字 (個人情報らしき値)
+ * - 利用者が追加でマスクしたい header は `maskHeaders` option で指定可能
+ * - PII (email / phone / credit card) 検出は `enablePiiDetection` で on/off (default on)
  *
  * redaction は出力の最終段で 1 回だけ呼ぶことを想定しているが、Bundle が長い場合は
  * 取得段階でも適用可能なように `maskSensitiveValue` を独立した API として提供する。
+ *
+ * RedactionReport は schema を壊さないため、追加情報 (種別ごとの集計) は
+ * `warnings` array に構造化文字列として書き込む形で表現する。
  */
 import {
   zJsonObject,
@@ -37,6 +43,16 @@ export interface MaskContext {
   key?: string;
   /** path 情報 (redactionReport に積む用) */
   path?: string;
+  /**
+   * 利用者が追加で「ヘッダ名と一致したら必ずマスクする」key 集合 (lower case)。
+   * `redactBundle` の `maskHeaders` option から内部で生成される。
+   */
+  extraMaskKeys?: ReadonlySet<string>;
+  /**
+   * PII (email / phone / credit card 等の個人情報) 値ベース検出を有効化するかどうか。
+   * default true。`redactBundle` の `enablePiiDetection: false` で off にできる。
+   */
+  enablePiiDetection?: boolean;
 }
 
 /** 1 検出ルールの結果 */
@@ -55,6 +71,7 @@ export interface MaskDetection {
  */
 export function detectSensitive(value: string, context: MaskContext = {}): MaskDetection {
   const normalizedKey = context.key?.toLowerCase().trim() ?? '';
+  const enablePii = context.enablePiiDetection !== false;
 
   // 1) header / json key ベースの判定
   if (normalizedKey) {
@@ -63,6 +80,10 @@ export function detectSensitive(value: string, context: MaskContext = {}): MaskD
     }
     if (SENSITIVE_PROPERTY_KEYS.has(normalizedKey)) {
       return { shouldMask: true, reason: `sensitive-property:${normalizedKey}` };
+    }
+    // 利用者が明示的に追加した maskHeaders (redactBundle option)
+    if (context.extraMaskKeys?.has(normalizedKey) === true) {
+      return { shouldMask: true, reason: `user-mask-header:${normalizedKey}` };
     }
     // partial match (例: "x-api-key-v2", "supabase-anon-key")
     for (const partial of SENSITIVE_KEY_PARTIALS) {
@@ -74,14 +95,87 @@ export function detectSensitive(value: string, context: MaskContext = {}): MaskD
 
   // 2) 値ベースの判定 (key が分からなくても見える明らかな機密)
   if (value.length > 0) {
+    // 2-a) 値全体が機密パターン (whole-string match)
     if (isJwtLike(value)) return { shouldMask: true, reason: 'jwt-like' };
     if (isLongBase64Like(value)) return { shouldMask: true, reason: 'long-base64' };
-    if (isEmailAddress(value)) return { shouldMask: true, reason: 'email' };
-    if (isPhoneNumber(value)) return { shouldMask: true, reason: 'phone' };
     if (isLikelyApiKey(value)) return { shouldMask: true, reason: 'api-key-pattern' };
+
+    // PII 検出は opt-out 可能 (default on)
+    if (enablePii) {
+      if (isEmailAddress(value)) return { shouldMask: true, reason: 'email' };
+      if (isCreditCardLike(value)) return { shouldMask: true, reason: 'credit-card' };
+      // phone は 12+ 桁連続数字より先に評価 (誤検知抑制のため + / ハイフン必須)
+      if (isPhoneNumber(value)) return { shouldMask: true, reason: 'phone' };
+      if (isLongDigitSequence(value)) return { shouldMask: true, reason: 'long-digit-sequence' };
+    }
+
+    // 2-b) 値の中に機密パターンが「埋め込まれている」場合 (= error message 等にトークンが混入)
+    //     ラストマイル現場では `console.errors[].text` や `server.errors[].message` に
+    //     トークン文字列が前後の文章と一緒に混ざることが多い。
+    //     全体一致では拾えないため、サブストリング検索で個別検出する。
+    //     検出時は「値全体」を `[REDACTED]` に置き換える (= 機密保全優先、文脈は report 側で確認)。
+    const embedded = detectEmbeddedSensitive(value, enablePii);
+    if (embedded !== null) {
+      return { shouldMask: true, reason: `embedded:${embedded}` };
+    }
   }
 
   return { shouldMask: false, reason: '' };
+}
+
+/**
+ * 値の途中に機密文字列が埋め込まれていないかを走査する。
+ *
+ * 検出順序は機密度の高い順 (=「漏れて困る順」):
+ * 1. 埋め込み JWT
+ * 2. 埋め込み API key prefix (sk_ / pk_ / ghp_ / AKIA 等)
+ * 3. 長大 base64 substring (40+ chars)
+ * 4. PII: email / credit card (Luhn) / 12+ 桁数字 / 国際電話
+ *
+ * @returns 該当した検出器名 (`jwt` / `api-key` / `long-base64` / `email` / `credit-card` /
+ *          `long-digit-sequence` / `phone-international`)、なければ `null`。
+ */
+function detectEmbeddedSensitive(value: string, enablePii: boolean): string | null {
+  // 1) JWT: base64url 3 セグメント・各 10+ chars
+  // 例: "auth failed: eyJ...XYZ.abc.def" を拾う
+  if (/[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/.test(value)) {
+    return 'jwt';
+  }
+  // 2) API key prefix
+  if (/\b(sk|pk|rk)_(?:live|test)?_?[A-Za-z0-9]{16,}/.test(value)) return 'api-key';
+  if (/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}/.test(value)) return 'api-key';
+  if (/\bAKIA[0-9A-Z]{12,}/.test(value)) return 'api-key';
+  // 3) 40+ chars の連続 base64-like substring (低リスク誤検知のため閾値高め)
+  if (/[A-Za-z0-9+/_=-]{40,}/.test(value) && /[A-Za-z]/.test(value) && /\d/.test(value)) {
+    return 'long-base64';
+  }
+
+  if (enablePii) {
+    // 4) email substring
+    if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(value)) return 'email';
+    // 5) credit card (Luhn) substring: 13〜19 桁、区切り `-` / 空白許容
+    if (containsLuhnDigitsSubstring(value)) return 'credit-card';
+    // 6) 12+ 桁の連続数字 substring
+    if (/\d{12,}/.test(value)) return 'long-digit-sequence';
+    // 7) 国際電話 substring (`+81-90-1234-5678` 形)
+    if (/\+\d[\d\s-]{9,}/.test(value)) return 'phone-international';
+  }
+
+  return null;
+}
+
+/**
+ * 値中に 13〜19 桁の数字列 (区切り `-` / 空白許容) があり、Luhn check が通るかを判定する。
+ *
+ * 単純な substring 検索だと UUID 等の誤検知が増えるため、桁数 + Luhn の二重チェックで絞り込む。
+ */
+function containsLuhnDigitsSubstring(value: string): boolean {
+  const re = /(?:\d[\s-]?){13,19}/g;
+  for (const m of value.matchAll(re)) {
+    const digits = m[0].replace(/[\s-]/g, '');
+    if (/^\d{13,19}$/.test(digits) && luhnCheck(digits)) return true;
+  }
+  return false;
 }
 
 /**
@@ -111,6 +205,12 @@ export function maskSensitiveValueWithDetection(
 
 // --- Bundle 全体 redaction ---
 
+/**
+ * redactBundle / redactBundleEx 共通の option 型 (Phase 8 拡張版)。
+ *
+ * 既存名 `RedactBundleOptions` を後方互換維持のためそのまま残しつつ、
+ * WBS §13 で示された `RedactOptions` という別名も export する (同一構造)。
+ */
 export interface RedactBundleOptions {
   /**
    * strict mode (opt-in)。
@@ -118,7 +218,27 @@ export interface RedactBundleOptions {
    * - true: マスク対象を検出したら `RedactionStrictError` を throw
    */
   strict?: boolean;
+  /**
+   * 追加マスク対象ヘッダ名。lower-case で正規化された上で
+   * `detectSensitive` 内の key 判定に上乗せされる (default rules を消さない)。
+   *
+   * 例: `["x-custom-token", "x-internal-secret"]`
+   */
+  maskHeaders?: readonly string[];
+  /**
+   * PII 系検出 (email / phone / credit card / 12 桁以上の連続数字) を有効化するかどうか。
+   * default `true`。CDP collector 等で「マスク漏れより誤検知を嫌う」シーンで false に
+   * できる。ただし基本は true 推奨 (機密漏洩のほうがコスト大)。
+   */
+  enablePiiDetection?: boolean;
 }
+
+/**
+ * `RedactBundleOptions` の WBS §13 表記版エイリアス。
+ *
+ * 既存 import が `RedactBundleOptions` で利用しているため、こちらは追加 export のみ。
+ */
+export type RedactOptions = RedactBundleOptions;
 
 export class RedactionStrictError extends Error {
   public readonly maskedFields: RedactionEntry[];
@@ -148,6 +268,7 @@ export interface RedactBundleResult {
  * - console.errors / warnings の text (素朴な値ベース検出)
  * - server.errors の message (素朴な値ベース検出)
  * - debugContext / domain の string 値 (再帰)
+ * - userObservation の lastAction / expected / actual / notes
  */
 export function redactBundle(
   input: LastMileBundle,
@@ -156,15 +277,23 @@ export function redactBundle(
   const entries: RedactionEntry[] = [];
   const warnings: string[] = [];
 
+  const extraMaskKeys = normalizeExtraMaskKeys(options.maskHeaders);
+  // PII 検出は default true。`false` で明示的に opt-out された場合のみ無効化。
+  const enablePiiDetection = options.enablePiiDetection !== false;
+
   const pushEntry = (path: string, reason: string): void => {
     entries.push({ path, reason });
   };
 
   const redactString = (value: string, path: string, key?: string): string => {
-    const { value: masked, detection } = maskSensitiveValueWithDetection(value, {
+    // exactOptionalPropertyTypes が effective なので、undefined フィールドは明示的に除外する
+    const ctx: MaskContext = {
       ...(key === undefined ? {} : { key }),
       path,
-    });
+      enablePiiDetection,
+      ...(extraMaskKeys === undefined ? {} : { extraMaskKeys }),
+    };
+    const { value: masked, detection } = maskSensitiveValueWithDetection(value, ctx);
     if (detection.shouldMask) {
       pushEntry(path, detection.reason);
     }
@@ -216,16 +345,18 @@ export function redactBundle(
     warnings: [...input.redactionReport.warnings, ...warnings],
   };
 
-  // strict mode 判定
+  // strict mode 判定 (entries は「今回追加分」のみで判定する。入力側既存の maskedFields は無視)
   if (options.strict === true && entries.length > 0) {
     throw new RedactionStrictError(mergedReport.maskedFields);
   }
 
-  // default mode: 検出件数を warning に追記する
+  // default mode: 検出件数 + 種別ごとの集計を warning に追記する。
+  // schema を変更したくないため、構造化情報は警告文字列の prefix `[redaction]` で表現する。
   if (options.strict !== true && entries.length > 0) {
     mergedReport.warnings.push(
       `[redaction] masked ${String(entries.length)} field(s) in default (continue) mode`,
     );
+    mergedReport.warnings.push(...summarizeByCategory(entries));
   }
 
   const bundle: LastMileBundle = {
@@ -240,6 +371,51 @@ export function redactBundle(
   };
 
   return { bundle, report: mergedReport };
+}
+
+/**
+ * `maskHeaders` option を内部用 Set<string> に正規化する。
+ *
+ * - 各要素を lower-case + trim
+ * - 空文字列は捨てる
+ * - undefined / 空配列は undefined を返す (= 追加マスクなし)
+ */
+function normalizeExtraMaskKeys(
+  raw: readonly string[] | undefined,
+): ReadonlySet<string> | undefined {
+  if (raw === undefined || raw.length === 0) return undefined;
+  const set = new Set<string>();
+  for (const v of raw) {
+    const normalized = v.toLowerCase().trim();
+    if (normalized.length > 0) {
+      set.add(normalized);
+    }
+  }
+  return set.size > 0 ? set : undefined;
+}
+
+/**
+ * 検出された entries を reason カテゴリでグルーピングし、warnings に積める形式の文字列を返す。
+ *
+ * 例: `[redaction:category] authorization=2, jwt-like=1`
+ *
+ * 構造化情報を schema 拡張せずに warnings 経由で取り回すための表現。
+ * 利用側は `warnings.find(w => w.startsWith('[redaction:category]'))` で機械的に parse 可能。
+ */
+function summarizeByCategory(entries: readonly RedactionEntry[]): string[] {
+  const counts = new Map<string, number>();
+  for (const e of entries) {
+    // reason は "sensitive-header:authorization" や "jwt-like" の形で来る。
+    // ':' があれば prefix をカテゴリ名にし、なければ reason そのものをカテゴリ名にする。
+    const colon = e.reason.indexOf(':');
+    const category = colon >= 0 ? e.reason.slice(0, colon) : e.reason;
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  // category 名でソートして決定的な出力にする (テスト容易性)
+  const parts = [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([cat, cnt]) => `${cat}=${String(cnt)}`);
+  return [`[redaction:category] ${parts.join(', ')}`];
 }
 
 // --- detection rules ---
@@ -281,6 +457,10 @@ const SENSITIVE_PROPERTY_KEYS = new Set<string>([
   'email',
   'phone',
   'phone_number',
+  'credit_card',
+  'creditcard',
+  'card_number',
+  'cardnumber',
 ]);
 
 /** partial match 用 (key 名に部分一致したらマスク) */
@@ -311,16 +491,91 @@ function isLongBase64Like(value: string): boolean {
   return /^[A-Za-z0-9+/_=-]+$/.test(value);
 }
 
+/**
+ * email address 検出 (RFC 5322 簡易版)。
+ *
+ * 完全な RFC 5322 を満たすのは現実的でないため、典型的な `local@domain.tld` 形を検出する。
+ * 文字列の一部に含まれる場合 (例: `Hello user@example.com please reply`) も検出するため、
+ * 完全一致ではなく部分一致で評価する。
+ */
 function isEmailAddress(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  return /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(value);
 }
 
+/**
+ * 電話番号検出 (E.164 / 国内電話 0X-XXXX-XXXX 形)。
+ *
+ * 誤検知を抑えるため、以下のいずれかを満たすときだけ phone と判断する:
+ * - 先頭が `+` で始まる (E.164、国際電話)
+ * - ハイフン or 空白を含み、桁数 (区切り文字除く) が 10〜15
+ * - `0` で始まる日本の国内電話形 (例: `090-1234-5678`, `03-1234-5678`)
+ *
+ * クレジットカードや単なる ID と区別するため、桁構成 (10〜15) に限定する。
+ */
 function isPhoneNumber(value: string): boolean {
-  // E.164 風 + 国内電話番号風 (10〜15 桁、ハイフン許容)
+  // 純粋数字列は別ルール (long-digit-sequence / credit-card) に任せる。
+  // phone 判定にはハイフン / 空白 / `+` 記号の存在を要求する。
+  if (!/[+\s-]/.test(value)) return false;
   const stripped = value.replace(/[\s-]/g, '');
-  if (!/^\+?\d{10,15}$/.test(stripped)) return false;
-  // 完全数値のみだと cardinal value とも区別できないため、ハイフン/プラス記号を要求して誤検知を抑える
-  return /[+\s-]/.test(value);
+  // E.164: +<country><number>、10〜15 桁
+  if (/^\+\d{10,15}$/.test(stripped)) return true;
+  // 日本国内 0 始まり (10〜11 桁)
+  if (/^0\d{9,10}$/.test(stripped)) return true;
+  return false;
+}
+
+/**
+ * クレジットカード番号らしき文字列の検出。
+ *
+ * - 13〜19 桁の数字 (区切り文字 `-` / 空白許容)
+ * - Luhn check digit が一致する
+ *
+ * 「すべての 16 桁数字をマスク」だと UUID や注文 ID も誤検知するため、Luhn で絞り込む。
+ * クレジットカードに似ない 12+ 桁数字列は `isLongDigitSequence` 側でマスクする。
+ */
+function isCreditCardLike(value: string): boolean {
+  const digits = value.replace(/[\s-]/g, '');
+  if (!/^\d{13,19}$/.test(digits)) return false;
+  return luhnCheck(digits);
+}
+
+/**
+ * Luhn algorithm によるカード番号検証。
+ *
+ * 末尾の check digit を含めて合計が 10 の倍数になるかを判定する。
+ */
+function luhnCheck(digits: string): boolean {
+  let sum = 0;
+  let alt = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    const ch = digits.charAt(i);
+    // 上で digits 正規表現を満たしていることを確認済なので 0-9 のはずだが
+    // 明示的に Number 変換し NaN 防止のため再確認する。
+    const d = Number.parseInt(ch, 10);
+    if (Number.isNaN(d)) return false;
+    let n = d;
+    if (alt) {
+      n = n * 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    alt = !alt;
+  }
+  return sum % 10 === 0;
+}
+
+/**
+ * 12 桁以上の連続数字を検出 (個人情報らしき値)。
+ *
+ * `isPhoneNumber` (区切り文字必須) や `isCreditCardLike` (Luhn 必須) に該当しなかった
+ * 12+ 桁の純粋数字列をフォールバックでマスクする。
+ *
+ * Why 12 桁: クレジットカード最小 13 桁、マイナンバー 12 桁、口座番号 7-14 桁といった
+ * 個人情報候補をカバーしつつ、ステータスコード / port 番号 / 短い ID は除外する。
+ */
+function isLongDigitSequence(value: string): boolean {
+  // 空白 / ハイフン区切りは phone 側で判定済 → ここは純粋連続数字に限定する
+  return /^\d{12,}$/.test(value);
 }
 
 function isLikelyApiKey(value: string): boolean {
