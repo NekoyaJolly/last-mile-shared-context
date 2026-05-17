@@ -1,7 +1,7 @@
 {
   "name": "@last-mile-context/react-bridge",
   "version": "0.1.0",
-  "description": "React hooks for AI Debug Context (Phase 3)",
+  "description": "React hooks and components for AI Debug Context (useAiDebugContext / CopyAiDebugContextButton)",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

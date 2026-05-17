@@ -1,7 +1,7 @@
 {
   "name": "@last-mile-context/playwright-adapter",
   "version": "0.1.0",
-  "description": "Playwright adapter for Last-Mile Bundle (Phase 7)",
+  "description": "Playwright adapter for Last-Mile Bundle: page snapshot, accessibility tree, trace attachment, spec generator",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

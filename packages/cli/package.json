@@ -1,7 +1,7 @@
 {
   "name": "@last-mile-context/cli",
   "version": "0.1.0",
-  "description": "lastmile CLI (Phase 5)",
+  "description": "lastmile CLI: collect / init / validate / mask / doctor for the Last-Mile Bundle protocol",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

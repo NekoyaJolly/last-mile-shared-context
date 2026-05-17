@@ -1,0 +1,85 @@
+{
+  "protocolVersion": "0.1.0",
+  "collectedAt": "2026-05-17T14:34:48.668Z",
+  "source": {
+    "collector": "cdp",
+    "packageVersion": "0.1.0"
+  },
+  "app": {
+    "name": "",
+    "environment": "development",
+    "branch": "",
+    "commit": ""
+  },
+  "page": {
+    "url": "http://localhost:3000/",
+    "title": "Last-Mile Shared Context — Next.js example",
+    "viewport": {
+      "width": 929,
+      "height": 861,
+      "deviceScaleFactor": 1
+    },
+    "screenshot": {
+      "path": "screenshot.png",
+      "mimeType": "image/png"
+    }
+  },
+  "userObservation": {
+    "lastAction": "Trigger demo failure ボタン押下",
+    "expected": "200 OK with payload",
+    "actual": "HTTP 500 returned (Demo API returned a non-success status)",
+    "notes": "意図的失敗の再現サンプル。debugContext.action.status='failed' / runtime.latestApi[0]={GET /api/demo-failure 500} に Bridge 側で記録した状態が確認できる。cdp-collector は attach 時点以降の console/network event を拾うため本サンプルでは console.errors / network.failedRequests は空 (collector attach より前にボタン操作が完了している)。"
+  },
+  "debugContext": {
+    "screen": {
+      "name": "Demo",
+      "route": "/",
+      "mode": "development"
+    },
+    "target": {
+      "type": "demo",
+      "id": "demo_001",
+      "relatedIds": {}
+    },
+    "action": {
+      "name": "demo-failure",
+      "status": "failed",
+      "expected": "200 OK with payload",
+      "actual": "HTTP 500 returned"
+    },
+    "domain": {
+      "exampleAppId": "last-mile-shared-context-example"
+    },
+    "runtime": {
+      "latestApi": [
+        {
+          "method": "GET",
+          "url": "/api/demo-failure",
+          "status": 500
+        }
+      ],
+      "latestError": {
+        "message": "Demo API returned a non-success status",
+        "timestamp": "2026-05-17T14:34:31.313Z"
+      },
+      "warnings": []
+    }
+  },
+  "console": {
+    "errors": [],
+    "warnings": []
+  },
+  "network": {
+    "failedRequests": [],
+    "recentRequests": []
+  },
+  "server": {
+    "errors": [],
+    "hints": []
+  },
+  "domain": {},
+  "redactionReport": {
+    "maskedFields": [],
+    "warnings": []
+  }
+}

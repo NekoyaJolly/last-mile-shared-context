@@ -26,3 +26,8 @@ coverage/
 
 # Last-Mile Bundle 出力 (実プロジェクト導入後の生成物)
 .last-mile/
+
+# ただし examples 配下の .last-mile/ は「Bundle 生成サンプル成果物」として
+# 意図的にコミットする (Phase 10 完了確認 / 新規利用者の動作イメージ用)
+!examples/**/.last-mile/
+!examples/**/.last-mile/**

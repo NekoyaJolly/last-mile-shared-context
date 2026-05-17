@@ -277,20 +277,22 @@ packages/react-bridge
 
 ## 5. WBS概要
 
-| Phase | 名称 | 目的 | 主な成果物 |
-|---:|---|---|---|
-| 1 | リポジトリ基盤構築 | パッケージ開発の土台を作る | pnpm monorepo, TypeScript, lint, test, build |
-| 2 | Schema/Core実装 | 中核仕様を固定する | Last-Mile Bundle Schema, AI Debug Context Schema |
-| 3 | App Bridge実装 | アプリ側からDebug Contextを出せるようにする | app-bridge, react-bridge |
-| 4 | CDP Collector実装 | Chrome DevTools MCPに依存しない最小観測を実装する | cdp-collector |
-| 5 | CLI実装 | MCPなしでもBundleを取得できるようにする | lastmile CLI |
-| 6 | MCP Server実装 | AIエージェントからtoolとして呼べるようにする | mcp-server |
-| 7 | Playwright Adapter実装 | 再現・Trace・E2E連携を可能にする | playwright-adapter |
-| 8 | Security/Redaction強化 | 機密情報漏洩を防ぐ | redaction rules, security tests |
-| 9 | Documentation/Templates | 汎用利用できる文書を整える | docs, AGENTS snippet, templates |
-| 10 | Example実装 | 導入例で動作確認する | Next.js example, generic example |
-| 11 | 既存プロジェクト導入 | 実戦でラストマイルを走れるか検証する | current project integration |
-| 12 | Package公開準備 | 再利用可能な形に整える | README, release, npm package準備 |
+最新ステータスは末尾 §25 を参照 (2026-05-17 時点で Phase 1-10 完了、Phase 6 含む)。
+
+| Phase | 名称 | 目的 | 主な成果物 | 状態 |
+|---:|---|---|---|---|
+| 1 | リポジトリ基盤構築 | パッケージ開発の土台を作る | pnpm monorepo, TypeScript, lint, test, build | ✅ |
+| 2 | Schema/Core実装 | 中核仕様を固定する | Last-Mile Bundle Schema, AI Debug Context Schema | ✅ |
+| 3 | App Bridge実装 | アプリ側からDebug Contextを出せるようにする | app-bridge, react-bridge | ✅ |
+| 4 | CDP Collector実装 | Chrome DevTools MCPに依存しない最小観測を実装する | cdp-collector | ✅ |
+| 5 | CLI実装 | MCPなしでもBundleを取得できるようにする | lastmile CLI | ✅ |
+| 6 | MCP Server実装 | AIエージェントからtoolとして呼べるようにする | mcp-server (`lastmile-mcp` bin + 8 tools) | ✅ |
+| 7 | Playwright Adapter実装 | 再現・Trace・E2E連携を可能にする | playwright-adapter | ✅ |
+| 8 | Security/Redaction強化 | 機密情報漏洩を防ぐ | redaction rules, security tests | ✅ |
+| 9 | Documentation/Templates | 汎用利用できる文書を整える | docs, AGENTS snippet, templates | ✅ |
+| 10 | Example実装 | 導入例で動作確認する | Next.js example | ✅ |
+| 11 | 既存プロジェクト導入 | 実戦でラストマイルを走れるか検証する | current project integration | ⏳ |
+| 12 | Package公開準備 | 再利用可能な形に整える | README, release, npm package準備 | ⏳ |
 
 ---
 
@@ -1327,4 +1329,56 @@ CDP / Browser / Playwright を使うintegration testは、Phase 4以降で追加
 Chrome DevTools MCPの互換実装を作ることではありません。
 どの取得手段を使っても、最終的に同じ `LastMileBundle` に正規化できる中核仕様を作ることが目的です。
 ```
+
+---
+
+## 25. 実装ステータス (2026-05-17 時点)
+
+Phase 1〜10 はマージ済み。中核仕様 + 取得手段 (CDP / CLI / MCP / Playwright) + Example が出揃い、汎用パッケージとして「導入可能な状態」に到達。残るは Phase 11 (実プロジェクト導入) と Phase 12 (npm 公開準備)。
+
+### 25.1 マージ済み PR
+
+| PR | Phase | 概要 | マージ日時 (UTC) |
+|---:|---:|---|---|
+| #1 | 1+2 | pnpm monorepo 基盤 + Last-Mile Bundle Schema / Core | 2026-05-17 04:49 |
+| #2 | 3 | App Bridge + React Bridge | 2026-05-17 06:55 |
+| #3 | 4 | CDP Collector | 2026-05-17 11:15 |
+| #4 | 5 | CLI (`lastmile collect / init / validate / mask / doctor`) | 2026-05-17 07:04 |
+| #5 | 7 | Playwright Adapter | 2026-05-17 11:16 |
+| #6 | 6 | MCP Server (`lastmile-mcp` bin + 8 tools via stdio) | 2026-05-17 11:16 |
+| #7 | 8 | Security / Redaction 強化 (PII / maskHeaders / SECURITY.md) | 2026-05-17 11:17 |
+| #8 | 9 | Documentation / Templates (8 docs + 3 templates) | 2026-05-17 11:17 |
+| #9 | 10 | Next.js App Router Example (Bridge デモ + 意図的 500 API) | 2026-05-17 12:57 |
+
+**注: PR #6 (Phase 6) は当初スタック PR (base = `phase/5-cli`) として merge され、本体が直接 main に到達していなかった。本 PR で `phase/5-cli` の merge commit `a5f2117` から `packages/mcp-server` 全体 + MCP SDK 依存を main へ取り込み、ステータスを正式に ✅ に確定。**
+
+全 PR で `PR → Copilot レビュー → エージェント対応 → 人間マージ` のフルワークフローを通過。
+
+### 25.2 packages の現状
+
+| package | 状態 | 主機能 |
+|---|---|---|
+| `@last-mile-context/schema` | ✅ | `LastMileBundle` / `AiDebugContext` の Zod + JSON Schema |
+| `@last-mile-context/core` | ✅ | `normalizeBundle` / `redactBundle` (PII+Luhn+JWT) / `classifyIssue` |
+| `@last-mile-context/app-bridge` | ✅ | `window.__AI_DEBUG_CONTEXT__` 公開 + Copy AI Context |
+| `@last-mile-context/react-bridge` | ✅ | `useAiDebugContext` / `useMergeAiDebugContext` / `<CopyAiDebugContextButton />` |
+| `@last-mile-context/cdp-collector` | ✅ | CDP 経由 Bundle 生成 (page/console/network/screenshot/debugContext) |
+| `@last-mile-context/cli` | ✅ | `lastmile collect / init / validate / mask / doctor` (commander、npm 未公開) |
+| `@last-mile-context/mcp-server` | ✅ | `lastmile-mcp` bin + 8 tools (`McpServer.registerTool` / MCP SDK ^1.29) |
+| `@last-mile-context/playwright-adapter` | ✅ | `collectFromPlaywright` / `captureAccessibilitySnapshot` / `attachTraceToBundle` / `ActionRecorder` / `generatePlaywrightTestFromBundle` |
+
+### 25.3 ドキュメント / テンプレート
+
+- `docs/LAST_MILE_PROTOCOL.md` / `docs/AI_DEBUG_CONTEXT.md` / `docs/CLI_USAGE.md` / `docs/MCP_USAGE.md` / `docs/SECURITY.md` / `docs/PROJECT_INTEGRATION_GUIDE.md`
+- `templates/AGENTS.last-mile.md` / `templates/ui-issue-report-template.md` / `templates/last-mile-bundle.example.json`
+- `examples/nextjs-app-router/` (Next.js 15 + React 19 最小実用例 + `lastmile collect` 実行で生成した Bundle サンプル `.last-mile/latest/`)
+
+### 25.4 残タスク
+
+- **Phase 11**: Trader-Note-Build-Ai (またはそれに準ずる実プロジェクト) への導入。`AGENTS.md` への Last-Mile Rule 追加と、実際の不具合 1 件以上を Bundle 経由で分類・修正するまで。
+- **Phase 12**: npm 公開準備。`package.json` の repository / homepage / files / publishConfig 整備、CHANGELOG、リリースワークフロー。
+
+### 25.5 protocolVersion
+
+現状 `0.1.0` (`packages/schema/src/lastMileBundle.ts`)。npm 公開時 (Phase 12 完了時) に `1.0.0` へ上げる余地を残す。Phase 11 中の Bundle 構造変更は patch / minor で吸収する想定。
 

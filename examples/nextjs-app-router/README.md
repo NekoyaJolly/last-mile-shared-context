@@ -36,8 +36,8 @@ examples/nextjs-app-router/
 | `@last-mile-context/app-bridge` | `setAiDebugContext` / `mergeAiDebugContext` / `enableAiDebugContextWindowPublish` |
 | `@last-mile-context/react-bridge` | `CopyAiDebugContextButton` |
 
-> **本 example のスコープ外** (= Phase 5/6/7 マージ後に wire):
-> `@last-mile-context/cli` / `@last-mile-context/mcp-server` / `@last-mile-context/cdp-collector` / `@last-mile-context/playwright-adapter`
+> **本 example が直接 import している package は app-bridge / react-bridge / schema のみ**。
+> `@last-mile-context/cli` / `@last-mile-context/mcp-server` / `@last-mile-context/cdp-collector` / `@last-mile-context/playwright-adapter` は **完成済み** (Phase 4-7) で、example の dev server に対して外側 (CLI / MCP / Playwright プロセス) から接続して Bundle を取得する。下記「Phase 別 wire 手順」参照。
 
 ## 起動方法
 
@@ -110,63 +110,105 @@ window.__AI_DEBUG_CONTEXT__
 
 `enableAiDebugContextWindowPublish({ allowProduction: false })` を `DebugContextProvider` 側で呼んでいるため、`mode: 'development'` でのみ window に公開される (production build では公開されない、これは意図的な設計)。
 
-## Phase 別 wire 手順 (本 example は scaffold のみ。実 wire は各 Phase マージ後)
+## サンプル成果物 (`.last-mile/latest/`)
 
-### Phase 5 (CLI collect) — PR #4 マージ後に有効化
+本 example には、`lastmile collect` で実際に取得した Bundle サンプルが `.last-mile/latest/` に含まれている (`.gitignore` で実プロジェクト導入後の生成物は除外しているが、example 配下のみ意図的にコミット):
 
-CLI で Last-Mile Bundle を取得する想定の流れ:
-
-```bash
-# 1. dev server を起動した状態で
-pnpm --filter nextjs-app-router dev
-
-# 2. 別タームで CLI collect を実行
-pnpm lastmile collect --url http://localhost:3000 --out .last-mile/latest
+```text
+.last-mile/latest/
+├── last-mile-bundle.json   # 中核: protocolVersion / page / userObservation / debugContext / console / network / redactionReport
+├── screenshot.png          # 取得時の画面 (CDP `Page.captureScreenshot`)
+├── console.json            # bundle.console を抜き出した派生ファイル
+└── network.json            # bundle.network を抜き出した派生ファイル
 ```
 
-`.last-mile/latest/bundle.json` に AI Debug Context + Network + Console + screenshot が結合された Bundle が出力される。**現時点では CLI package は scaffold のみで未実装。**
+このサンプルは「Trigger demo failure ボタン押下後」の状態。`debugContext.action.status = "failed"` / `runtime.latestApi[0] = { method: 'GET', url: '/api/demo-failure', status: 500 }` / `runtime.latestError` が記録されている = AI に貼り付ければ「Demo 画面の demo-failure アクションが 500 を返した」事実が文字情報で伝わる。
 
-### Phase 6 (MCP) — PR #6 マージ後に有効化
+## Phase 別 wire 手順 (Phase 4-7 完成済み — 下記コマンドはすべて実走可能)
 
-Claude Desktop / Cursor 等の MCP クライアントから collect を呼べるようにする:
+### Phase 5 (CLI collect)
+
+CLI で Last-Mile Bundle を取得する手順:
+
+```bash
+# 1. Chrome を remote debugging port 付きで起動 (1 度だけ)
+"<chrome.exe path>" --remote-debugging-port=9222 --user-data-dir=.chrome-lastmile http://localhost:3000
+
+# 2. monorepo ルートで dev server を起動
+pnpm --filter nextjs-app-router dev
+
+# 3. 別ターミナルで CLI collect を実行
+pnpm --filter nextjs-app-router exec node ../../packages/cli/dist/cli.js collect \
+  --url http://localhost:3000/ \
+  --last-action "Trigger demo failure ボタン押下" \
+  --expected "200 OK with payload" \
+  --actual  "HTTP 500 returned" \
+  --out .last-mile/latest
+
+# (本 example の .last-mile/latest/ に同種の Bundle サンプルが既にコミットされている)
+```
+
+CLI 接続診断は `node packages/cli/dist/cli.js doctor` で行える。
+
+### Phase 6 (MCP)
+
+`@last-mile-context/mcp-server` は `lastmile-mcp` bin として MCP SDK 1.29+ の `McpServer.registerTool` で 8 tools (`collect_last_mile_bundle` / `get_current_page` / `take_screenshot` / `get_console_errors` / `get_network_failures` / `get_ai_debug_context` / `validate_last_mile_bundle` / `mask_sensitive_bundle`) を公開する。Claude Desktop / Cursor 等の MCP クライアント設定:
 
 ```jsonc
-// ~/.config/claude/claude_desktop_config.json などに追加 (Phase 6 マージ後に有効)
+// ~/.config/claude/claude_desktop_config.json (macOS / Linux) などに追加
 {
   "mcpServers": {
     "last-mile-context": {
       "command": "npx",
-      "args": ["@last-mile-context/mcp-server"]
+      "args": ["-y", "@last-mile-context/mcp-server"]
     }
   }
 }
 ```
 
-> Phase 6 (PR #6) で公開される `lastmile-mcp` bin (= `@last-mile-context/mcp-server`
-> パッケージ) を独立した MCP server として起動する。CLI 側に `mcp` subcommand は
-> ない (= Copilot review #2 対応で命名を修正)。
+CLI 側に `mcp` subcommand は持たず、独立 bin として起動する設計。
 
-MCP tool 経由で `collect` を呼ぶと、AI 自身が Bundle を取得して原因分類できる。**現時点では mcp-server package は scaffold のみで未実装。**
+### Phase 7 (Playwright trace)
 
-### Phase 7 (Playwright trace) — PR #5 マージ後に有効化
+Playwright で trace を取りつつ Bundle を同梱する流れは `@last-mile-context/playwright-adapter` を test 内で使う形:
 
-Playwright で trace を取りつつ AI Debug Context も Bundle に同梱する流れ:
+```ts
+import {
+  collectFromPlaywright,
+  attachTraceToBundle,
+  generatePlaywrightTestFromBundle,
+} from '@last-mile-context/playwright-adapter';
 
-```bash
-# Phase 7 マージ後に有効
-pnpm lastmile playwright init      # test 雛形 + storageState 設定を生成
-pnpm lastmile playwright run        # trace + bundle.json を保存
+test('demo failure', async ({ page, context }) => {
+  await context.tracing.start({ screenshots: true, snapshots: true });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Trigger demo failure' }).click();
+  await expect(page.locator('dd').first()).not.toHaveText(/まだ発火していません/);
+
+  const bundle = await collectFromPlaywright({
+    page,
+    userObservation: {
+      lastAction: 'Trigger demo failure ボタン押下',
+      expected: '200 OK with payload',
+      actual: 'HTTP 500 returned',
+    },
+  });
+
+  const tracePath = '.last-mile/latest/trace.zip';
+  await context.tracing.stop({ path: tracePath });
+  await attachTraceToBundle(bundle, tracePath);
+});
 ```
 
-**現時点では playwright-adapter package は scaffold のみで未実装。**
+`generatePlaywrightTestFromBundle(bundle)` で「次に同じ事象を再現する Playwright spec の雛形」も生成できる (E2E 化のための土台)。
 
 ## 環境変数
 
-現状 (Phase 10) ではこの example 自体は環境変数を必要としない。Phase 5/6/7 マージ後に `lastmile.config.json` などを参照する設定が増える予定。`.env.example` 参照。
+本 example 自体は環境変数を必要としない。CLI / MCP 連携で `lastmile.config.json` を使う場合は `node packages/cli/dist/cli.js init` で雛形を生成できる。`.env.example` も参照。
 
 ## 注意事項
 
 - 本 example は `monorepo workspace 内 (examples/*)` にあるが、`packages/*` ではないため root の `pnpm lint` / `pnpm typecheck` / `pnpm test` / `pnpm build` の対象外。Next.js 固有の lint / typecheck はこの example 内で `pnpm --filter nextjs-app-router typecheck` を実行する。
 - `package.json` の `"private": true` により npm publish 対象外。
 - React は 19、Next.js は 15.5.18。`react-bridge` の peerDependency は `^18 || ^19` なので 19 を満たす。
-- Phase 11 (= 実プロジェクト Trader-Note-Build-Ai 統合) は本 Phase の範囲外。
+- Phase 11 (= 実プロジェクト Trader-Note-Build-Ai 統合) は本 example の範囲外。本 example は Phase 10 (汎用パッケージ側の動作確認) で完結する。
