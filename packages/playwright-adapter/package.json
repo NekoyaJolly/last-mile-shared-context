@@ -23,7 +23,21 @@
     "@last-mile-context/core": "workspace:*",
     "@last-mile-context/schema": "workspace:*"
   },
+  "peerDependencies": {
+    "@playwright/test": "^1.50.0",
+    "playwright": "^1.50.0"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    },
+    "playwright": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "playwright": "^1.50.0",
     "rimraf": "^6.0.1",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2"
