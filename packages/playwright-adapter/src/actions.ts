@@ -129,7 +129,7 @@ export function actionToPlaywrightCode(action: RecordedAction): string {
         ? `await page.locator('${sel}').waitFor();`
         : `// TODO: wait condition unknown`;
     case 'custom':
-      return `// TODO (custom): ${action.description ?? ''}`;
+      return `// TODO (custom): ${escapeLineComment(action.description ?? '')}`;
   }
 }
 
@@ -143,4 +143,13 @@ export function escapeJsString(value: string): string {
     .replace(/'/g, "\\'")
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r');
+}
+
+/**
+ * 単一行コメント (`// ...`) 内に埋め込むための escape (Copilot review #1 対応)。
+ * 改行を含む description を素の `// TODO ...` に貼ると、改行以降が実行可能な
+ * 生成コードになってしまうため、改行を可視化文字列に置換する。
+ */
+export function escapeLineComment(value: string): string {
+  return value.replace(/\r\n|\r|\n/g, ' \\n ');
 }

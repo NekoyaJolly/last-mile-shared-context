@@ -97,18 +97,19 @@ export async function collectFromPlaywright(
 
   const onConsole = (msg: ConsoleMessage): void => {
     const t = msg.type();
+    if (t !== 'error' && t !== 'warning') return;
+    // source key は location.url が空文字なら **完全に省略する** (Copilot review #3/#4 対応)。
+    // `source: undefined` のまま normalizeBundle に渡すと zJsonObject.safeParse で
+    // undefined を含む object として拒否され、partial bundle 全体が default に置換される。
+    const source = locationToSource(msg.location());
+    const entry =
+      source !== undefined
+        ? { level: t, text: msg.text(), source }
+        : { level: t, text: msg.text() };
     if (t === 'error') {
-      consoleErrors.push({
-        level: 'error',
-        text: msg.text(),
-        source: locationToSource(msg.location()),
-      });
-    } else if (t === 'warning') {
-      consoleWarnings.push({
-        level: 'warning',
-        text: msg.text(),
-        source: locationToSource(msg.location()),
-      });
+      consoleErrors.push(entry);
+    } else {
+      consoleWarnings.push(entry);
     }
   };
 
@@ -131,13 +132,20 @@ export async function collectFromPlaywright(
       entry.statusText = res.statusText();
       entry.endedAt = new Date().toISOString();
     } else {
+      // Copilot review #5 対応: hardcoded 'GET' は POST/PUT 等のレスポンスを誤分類する。
+      // res.request().method() を使って実際の HTTP method を採用。
       recentRequests.push({
-        method: 'GET',
+        method: res.request().method(),
         url,
         status: res.status(),
         statusText: res.statusText(),
         endedAt: new Date().toISOString(),
       });
+      // Copilot review #6 対応: fallback push 後も recentRequestsLimit を適用する
+      // (in-flight 開始済みレスポンスでも limit を超えないよう FIFO trim)。
+      if (recentRequests.length > recentLimit) {
+        recentRequests.splice(0, recentRequests.length - recentLimit);
+      }
     }
   };
 
@@ -301,11 +309,19 @@ async function trySaveScreenshot(page: Page, path: string): Promise<boolean> {
 async function readDebugContext(page: Page): Promise<JsonObject> {
   try {
     // 取得側で文字列に変換することで Playwright transport の型が `string` に確定し、
-    // 本ファイルに `unknown` / `any` を漏らさずに済む。
+    // 本関数の signature に `unknown` を露出させない (Copilot review #2 対応)。
+    // page.evaluate コールバック内の window 拡張の narrow に限り `unknown` を許容
+    // する: 後段の `zJsonObject.safeParse(parseJsonSafely(json))` で必ず JsonValue
+    // に narrow するため、AGENTS.md §2 の意図 (= unknown を本番ロジックに伝播させない)
+    // を満たす。境界 helper としての例外を明示。
     const json: string = await page.evaluate<string>(() => {
       try {
+        // page.evaluate コールバックは page 側 JS として実行されるため、本プロジェクトの
+        // tsc / ESLint チェック対象外 (Playwright が string 化して送信)。型注釈の
+        // `unknown` は parent context の型ヒントとしてのみ機能し、本番ロジックには伝播
+        // しない (後段 `zJsonObject.safeParse` で必ず JsonValue に narrow)。
         const v = (window as Window & { __AI_DEBUG_CONTEXT__?: unknown }).__AI_DEBUG_CONTEXT__;
-        if (v === undefined) return 'null';
+        if (v === undefined || v === null) return 'null';
         return JSON.stringify(v);
       } catch {
         return 'null';
