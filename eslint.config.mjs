@@ -78,8 +78,11 @@ export default tseslint.config(
     // tests / scripts のみ any / unknown を allow
     files: [
       '**/*.test.ts',
+      '**/*.test.tsx',
       '**/*.spec.ts',
+      '**/*.spec.tsx',
       '**/tests/**/*.ts',
+      '**/tests/**/*.tsx',
       '**/scripts/**/*.ts',
     ],
     rules: {

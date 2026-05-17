@@ -10,7 +10,12 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    include: ['packages/*/src/**/*.test.ts', 'packages/*/tests/**/*.test.ts'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'packages/*/src/**/*.test.tsx',
+      'packages/*/tests/**/*.test.ts',
+      'packages/*/tests/**/*.test.tsx',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
@@ -27,6 +32,8 @@ export default defineConfig({
         __dirname,
         'packages/cdp-collector/src/index.ts',
       ),
+      '@last-mile-context/app-bridge': resolve(__dirname, 'packages/app-bridge/src/index.ts'),
+      '@last-mile-context/react-bridge': resolve(__dirname, 'packages/react-bridge/src/index.ts'),
     },
   },
 });
