@@ -10,7 +10,8 @@
  * - zero-deps に近く、TypeScript 型定義あり、よく使われる
  * - oclif は重く、Phase 5 範囲では不要
  */
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import { Command } from 'commander';
 
 import { CliError, toError } from './errors.js';
@@ -253,17 +254,23 @@ export async function main(argv: string[] = process.argv): Promise<void> {
 }
 
 // bin として実行された時のみ main() を起動する。
-// import.meta.url との比較で、test や programatic use から require された時は起動しない。
-// (Node 22+ は import.meta.url が file:// URL を返す)
+// import.meta.url と実行エントリの比較で、test や programatic use から
+// import された時は起動しない。(Node 22+ は import.meta.url が file:// URL を返す)
 //
-// Copilot review #4 対応: Windows のドライブ文字 / スペース / 日本語等の特殊文字を含む
-// パスでも安全に file URL 化するため、`pathToFileURL` を使用 (Node 標準、OS 差を吸収)。
+// pnpm 等のパッケージマネージャは bin を symlink 経由で起動する
+// (node_modules/.bin/lastmile → @last-mile-context/cli/dist/cli.js → .pnpm 実体)。
+// ESM では import.meta.url は symlink 解決後の realpath を指す一方、
+// process.argv[1] は symlink パスのままになるため、URL 文字列を直接比較すると
+// 常に不一致になり main() が起動しない (= bin 実行で無音終了する) 不具合になる。
+// そこで両辺を realpath 化したネイティブパスで比較する。
+// (ネイティブパス比較なので Windows のドライブ文字 / スペース / 日本語等も安全。)
 const isMainModule = (() => {
   try {
     const entry = process.argv[1];
     if (entry === undefined) return false;
-    const entryUrl = pathToFileURL(entry).href;
-    return import.meta.url === entryUrl;
+    const selfPath = fileURLToPath(import.meta.url);
+    const entryPath = realpathSync(entry);
+    return selfPath === entryPath;
   } catch {
     return false;
   }
